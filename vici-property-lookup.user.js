@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      11.0
+// @version      11.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -603,11 +603,13 @@ function readHomesPage(doc) {
     const done = (o) => { c.sites[key] = Object.assign({ url: s.url(a, c) }, o); renderAll(); };
 
     if (key === 'homes') {
-      const r = await homesLookup(a, c.homesPick);
+      const r = await homesLookup(c.homesAddr || a, c.homesPick);
       if (r && !r.ok && r.near) return done({ state: 'nomatch', near: r.near.map((t) => ({ id: t, line: t, label: t })) });
       if (!r || !r.ok) return done({ state: 'error', code: r ? r.why : 'no answer from the Homes.com tab' });
       c.homesUrl = r.url;
-      return done({ state: 'ok', model: fromHomes(r.data), url: r.url, picked: c.homesPick || null });
+      const hm = fromHomes(r.data);
+      if (c.homesAddr) hm.street = c.homesAddr.street;
+      return done({ state: 'ok', model: hm, url: r.url, picked: c.homesAddr ? { line: c.homesAddr.street, city: c.homesAddr.city, state: c.homesAddr.state, zip: c.homesAddr.zip } : null });
     }
     if ((key === 'zillow' || key === 'trulia') && !c.zillow) return done({ state: 'nomatch', near: c.zNear || [] });
     if (key === 'realtor' && !c.realtor) return done({ state: 'nomatch', near: c.rNear || [] });
@@ -632,14 +634,47 @@ function readHomesPage(doc) {
     done({ state: 'ok', model, raw: data, picked });
   }
 
-  function pickNear(a, c, key, i) {
+  // A close match the agent picked (on any tab) becomes the property for every tab that has no exact
+  // match of its own, so they only pick once. Tabs that found the lead's exact address keep it.
+  function nearAddr(x) {
+    if (x.city) return { street: x.line, city: x.city, state: x.state, zip: String(x.zip || '').slice(0, 5) };
+    const m = String(x.label || x.line).match(/^(.+?),\s*(.+?),\s*([A-Za-z]{2})\s+(\d{5})/); // Homes.com: "140 Holland Trl, Pelham, AL 35124"
+    return m ? { street: m[1], city: m[2], state: m[3].toUpperCase(), zip: m[4] } : null;
+  }
+  async function pickNear(a, c, key, i) {
     const st = siteState(c, key), x = st.near && st.near[i];
     if (!x) return;
-    if (key === 'homes') { c.homesPick = x.line; c.sites.homes = { state: 'idle' }; return loadSite(a, c, 'homes'); }
-    if (key === 'realtor') { c.realtor = x; c.realtorPicked = true; c.sites.realtor = { state: 'idle' }; return loadSite(a, c, 'realtor'); }
-    // Zillow and Trulia share one property id, so a pick on either fills both
-    c.zillow = x; c.zillowPicked = true; c.zHistory = null;
-    ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: 'idle' }; loadSite(a, c, k); });
+    const p = nearAddr(x);
+    if (!p) return;
+    p.full = `${p.street}, ${p.city}, ${p.state} ${p.zip}`; p.missing = [];
+    c.pick = p;
+    const reset = (k) => { c.sites[k] = { state: 'loading' }; };
+    const zNeeds = !c.zillow || c.zillowPicked, rNeeds = !c.realtor || c.realtorPicked;
+    if (zNeeds) ['zillow', 'trulia'].forEach(reset);
+    if (rNeeds) reset('realtor');
+    renderAll();
+
+    // Homes.com: re-run only if its tab was already opened; otherwise it uses the pick when opened
+    const hs = siteState(c, 'homes');
+    const hExact = hs.state === 'ok' && !hs.picked;
+    if (!hExact) {
+      c.homesAddr = p;
+      c.homesPick = key === 'homes' ? x.line : '';
+      if (hs.state !== 'idle') { c.sites.homes = { state: 'idle' }; loadSite(a, c, 'homes'); }
+    }
+
+    if (zNeeds) {
+      const z = (key === 'zillow' || key === 'trulia') ? x : await lookupZillow(p);
+      c.zHistory = null;
+      if (z && z.zpid) { c.zillow = z; c.zillowPicked = true; ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: 'idle' }; loadSite(a, c, k); }); }
+      else { c.zillow = null; c.zNear = (z && z.near) || []; ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: 'nomatch', near: c.zNear, url: SITES.find((y) => y.key === k).url(a, c) }; }); }
+    }
+    if (rNeeds) {
+      const r = key === 'realtor' ? x : await lookupRealtor(p);
+      if (r && r.id) { c.realtor = r; c.realtorPicked = true; c.sites.realtor = { state: 'idle' }; loadSite(a, c, 'realtor'); }
+      else { c.realtor = null; c.rNear = (r && r.near) || []; c.sites.realtor = { state: 'nomatch', near: c.rNear, url: SITES.find((y) => y.key === 'realtor').url(a, c) }; }
+    }
+    renderAll();
   }
 
   function loadDetails(a, c) {
