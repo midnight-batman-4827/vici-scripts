@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      8.3
+// @version      8.4
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -208,8 +208,8 @@
     const want = /(avg|average|median).*(sale|sold|list).*price|sale.?to.?list|price.?per.?(sq|square)|listing.?count|inventory|days.?on.?market|buyer|seller|market.?temp/i;
     datas.forEach((d) => walkAll(d, (o) => {
       if (Array.isArray(o)) return;
-      const hits = Object.keys(o).filter((k) => want.test(k) && o[k] !== null && typeof o[k] !== 'object').length;
-      if (hits > score) { score = hits; best = o; }
+      const keys = Object.keys(o).filter((k) => want.test(k) && typeof o[k] === 'number' && isFinite(o[k]));
+      if (keys.length > score) { score = keys.length; best = {}; keys.forEach((k) => { best[k] = o[k]; }); }
     }));
     return score >= 2 ? best : null;
   }
@@ -517,6 +517,9 @@
       display:flex;gap:14px;align-items:center;font-size:13px}
     .vp-banner b{color:var(--accent)}
     .vp-note{font-size:12px;color:var(--muted);margin:0 0 12px}
+    .vp-hl.wide{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px 18px}
+    .vp-sec{margin:16px 0 10px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-top:1px solid var(--border);padding-top:14px}
+    .vp-card h3 + .vp-sec{border-top:0;padding-top:0;margin-top:4px}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
     .vp-stage{position:relative;background:#111;border-radius:var(--radius);overflow:hidden;height:420px;display:flex;align-items:center;justify-content:center}
     .vp-stage img{max-width:100%;max-height:100%;object-fit:contain;display:block}
@@ -615,22 +618,36 @@
     const chart = m.history && m.history.length > 1 ? chartSVG(m.history, Math.max(420, Math.round(((screen && screen.clientWidth) || 1400) - 58) * 1.15 / 2.15 - 38), 260, th.chart, 'Home value estimate over time')
       : '<div class="vp-na">Value history isn\'t in this site\'s page data for this home.</div>';
 
-    const hl = [
+    // one card, one look: icon + label + value for every fact
+    const item = (ic, k, v, sub) => `<div><span class="ic">${icon(ic)}</span><div><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="k">${esc(sub)}</div>` : ''}</div></div>`;
+    const section = (title, items) => items.length ? `<h4 class="vp-sec">${esc(title)}</h4><div class="vp-hl wide">${items.join('')}</div>` : '';
+
+    const hlItems = [
       ['home', 'Type', m.type], ['cal', 'Built', m.yearBuilt], ['ruler', 'Size', m.sqft ? num(m.sqft) + ' sqft' : ''],
       ['tag', 'Price / sqft', est && m.sqft ? money(est / m.sqft) : ''], ['bed', 'Beds / baths', isNum(m.beds) && isNum(m.baths) ? `${m.beds} bd / ${m.baths} ba` : ''],
       ['tree', 'Lot', m.lot], ['car', 'Parking', m.parking], ['people', 'HOA', m.hoa], ['dollar', 'Rent estimate', m.rent], ['pin', 'County', m.county]
-    ].filter(([, , v]) => v).map(([ic, k, v]) => `<div><span class="ic">${icon(ic)}</span><div><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div></div>`).join('');
+    ].filter(([, , v]) => v).map(([ic, k, v]) => item(ic, k, v));
 
-    const det = m.groups.filter(([, rows]) => rows.length).map(([g, rows]) => `<div><h4>${esc(g)}</h4>${rows.map(([k, v]) =>
-      `<div class="r">${k ? `<span class="k">${esc(k)}:</span> ` : ''}${esc(v)}</div>`).join('')}</div>`).join('');
+    const GROUP_ICON = { 'Interior': 'bed', 'Heating & Cooling': 'home', 'Exterior': 'tree', 'Parking & Garage': 'car',
+      'Lot & Utilities': 'ruler', 'Community & HOA': 'people', 'At a glance': 'home' };
+    const seen = new Set(['bedrooms', 'lot size', 'parking capacity']); // already shown above
+    const detItems = [];
+    m.groups.forEach(([g, rows]) => rows.forEach(([k, v]) => {
+      const label = k || g;
+      if (seen.has(label.toLowerCase())) return;
+      seen.add(label.toLowerCase());
+      detItems.push(item(GROUP_ICON[g] || 'home', label, v));
+    }));
 
-    const priceRows = m.priceHistory.slice(0, 12).map((e) => `<tr><td>${esc(day(e.date))}</td><td>${esc(e.event || '')}</td><td><b>${esc(money(e.price))}</b></td></tr>`).join('');
-    const taxRows = m.taxHistory.slice(0, 12).map((t) => `<tr><td>${esc(t.year)}</td><td>${esc(money(t.tax))}</td><td><b>${esc(money(t.value))}</b></td></tr>`).join('');
+    const saleItems = m.priceHistory.slice(0, 12).map((e) => item('tag', `${e.event || 'Event'} · ${day(e.date)}`, money(e.price) || '—'));
+    const taxItems = m.taxHistory.slice(0, 12).map((t) => item('dollar', `${t.year} property tax`, money(t.tax) || '—', t.value ? 'Assessed ' + money(t.value) : ''));
+
+    const facts = section('Highlights', hlItems) + section('Home details', detItems) + section('Price history', saleItems) + section('Tax history', taxItems);
 
     let mkt = '<div class="vp-na">Market trend numbers aren\'t in this site\'s page data for this home.</div>';
     if (m.market) {
       const mk = m.market;
-      const items = Object.keys(mk).filter((k) => mk[k] !== null && typeof mk[k] !== 'object' && show(mk[k]) !== '').slice(0, 10).map((k) => {
+      const items = Object.keys(mk).slice(0, 10).map((k) => {
         const v = mk[k];
         const fmt = typeof v === 'number' ? (/price|value/i.test(k) ? money(v) : /ratio|percent|pct|toList/i.test(k) ? (v <= 2 ? (v * 100).toFixed(1) : v.toFixed(1)) + '%' : num(v)) : show(v);
         return `<div class="vp-tile"><div class="k">${esc(words(k))}</div><div class="v">${esc(fmt)}</div></div>`;
@@ -653,14 +670,7 @@
         <div class="vp-card"><h3>Sale &amp; value</h3>${tiles}${lead}</div>
         <div class="vp-card"><h3>Value over time</h3>${chart}</div>
       </div>
-      <div class="vp-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,2fr);margin-top:14px">
-        <div class="vp-card"><h3>Home highlights</h3><div class="vp-hl">${hl || '<div class="vp-na">—</div>'}</div></div>
-        <div class="vp-card"><h3>Home details for ${esc(m.street || a.street)}</h3>${det ? `<div class="vp-det">${det}</div>` : '<div class="vp-na">No detailed facts listed.</div>'}</div>
-      </div>
-      <div class="vp-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-top:14px">
-        <div class="vp-card"><h3>Price history</h3>${priceRows ? `<table class="vp-t"><tr><th>Date</th><th>Event</th><th>Price</th></tr>${priceRows}</table>` : '<div class="vp-na">No price history.</div>'}</div>
-        <div class="vp-card"><h3>Tax history</h3>${taxRows ? `<table class="vp-t"><tr><th>Year</th><th>Property tax</th><th>Tax assessment</th></tr>${taxRows}</table>` : '<div class="vp-na">No tax history.</div>'}</div>
-      </div>
+      <div class="vp-card" style="margin-top:14px"><h3>Home highlights for ${esc(m.street || a.street)}</h3>${facts || '<div class="vp-na">No home facts listed.</div>'}</div>
       <div class="vp-card" style="margin-top:14px"><h3>Market trends in ${esc(m.city || a.city)}</h3>${mkt}</div>`;
   }
 
