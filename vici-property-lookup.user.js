@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.2
+// @version      10.3
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -471,6 +471,20 @@
     if (!best || Math.abs(best.t - target) > 45 * 864e5) return null;
     return { amt: now - best.v, pct: (now - best.v) / best.v * 100 };
   }
+  // "Owned 3 yrs 2 mos" under Last sold; under a year is flagged, since many programs have ownership minimums
+  function ownedFor(t) {
+    if (!t) return '';
+    const mm = typeof t === 'string' && t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const d = mm ? new Date(+mm[1], +mm[2] - 1, +mm[3]) : new Date(t);
+    if (isNaN(d)) return '';
+    const now = new Date();
+    let months = (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth()) - (now.getDate() < d.getDate() ? 1 : 0);
+    if (months < 0) return '';
+    const y = Math.floor(months / 12), mo = months % 12;
+    const txt = (y ? `${y} yr${y > 1 ? 's' : ''}` : '') + (y && mo ? ' ' : '') + (mo || !y ? `${mo} mo${mo === 1 ? '' : 's'}` : '');
+    return `<div class="vp-owned${months < 12 ? ' short' : ''}">Owned ${txt}</div>`;
+  }
+
   function changeHTML(ch) {
     if (!ch) return '<div class="vp-na">Not available</div>';
     const up = ch.amt >= 0;
@@ -614,6 +628,8 @@
     .vp-side .vp-hl.wide{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px 14px}
     .vp-side .vp-sec{margin-top:12px}
     .vp-side-scroll > .vp-sec:first-child{border-top:0;padding-top:0;margin-top:0}
+    .vp-owned{font-size:12px;font-weight:600;color:var(--muted);margin-top:3px}
+    .vp-owned.short{color:#b45309}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
     .vp-gal{width:fit-content;max-width:100%}
     .vp-stage{position:relative;display:block;width:100%;aspect-ratio:4/3;max-height:520px;border-radius:var(--radius);overflow:hidden;background:var(--tile)}
@@ -726,7 +742,7 @@
     const tiles = `
       <div class="vp-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
         <div class="vp-tile"><div class="k">Listed status</div><div class="v">${esc(m.status || '—')}</div>${m.listPrice ? `<div class="vp-na">List price ${esc(money(m.listPrice))}</div>` : ''}</div>
-        <div class="vp-tile"><div class="k">Last sold</div><div class="v">${esc(day(m.soldDate) || '—')}</div></div>
+        <div class="vp-tile"><div class="k">Last sold</div><div class="v">${esc(day(m.soldDate) || '—')}</div>${ownedFor(m.soldDate)}</div>
         <div class="vp-tile"><div class="k">Bought for</div><div class="v">${esc(money(m.soldPrice) || '—')}</div></div>
       </div>`;
 
