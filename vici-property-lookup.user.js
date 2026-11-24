@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      8.4
+// @version      8.5
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -202,18 +202,6 @@
     return best;
   }
 
-  // Market trends: an object that carries sale-price style numbers for the area
-  function findMarket(datas) {
-    let best = null, score = 0;
-    const want = /(avg|average|median).*(sale|sold|list).*price|sale.?to.?list|price.?per.?(sq|square)|listing.?count|inventory|days.?on.?market|buyer|seller|market.?temp/i;
-    datas.forEach((d) => walkAll(d, (o) => {
-      if (Array.isArray(o)) return;
-      const keys = Object.keys(o).filter((k) => want.test(k) && typeof o[k] === 'number' && isFinite(o[k]));
-      if (keys.length > score) { score = keys.length; best = {}; keys.forEach((k) => { best[k] = o[k]; }); }
-    }));
-    return score >= 2 ? best : null;
-  }
-
   // ---------- Zillow value history (the "Zestimate history" chart is loaded separately) ----------
   const CHART_QUERY = `query HomeValueChartDataQuery($zpid: ID!, $metricType: HomeValueChartMetricType, $timePeriod: HomeValueChartTimePeriod) {
     property(zpid: $zpid) { homeValueChartData(metricType: $metricType, timePeriod: $timePeriod) { points { x y } name } } }`;
@@ -291,7 +279,6 @@
       groups,
       priceHistory: ph.map((e) => ({ date: e.date || e.time, event: e.event, price: e.price })),
       taxHistory: (p.taxHistory || []).map((t) => ({ year: t.time ? new Date(t.time).getUTCFullYear() : '', tax: t.taxPaid, value: t.value })),
-      market: findMarket(datas),
       street: p.streetAddress || (p.address && p.address.streetAddress) || '',
       city: (p.address && p.address.city) || p.city || ''
     };
@@ -326,7 +313,6 @@
       groups,
       priceHistory: ph.map((e) => ({ date: e.date, event: e.event_name, price: e.price })),
       taxHistory: (o.tax_history || []).map((t) => ({ year: t.year, tax: t.tax, value: t.assessment && t.assessment.total })),
-      market: findMarket(datas),
       street: loc.line || '', city: loc.city || ''
     };
   }
@@ -644,17 +630,6 @@
 
     const facts = section('Highlights', hlItems) + section('Home details', detItems) + section('Price history', saleItems) + section('Tax history', taxItems);
 
-    let mkt = '<div class="vp-na">Market trend numbers aren\'t in this site\'s page data for this home.</div>';
-    if (m.market) {
-      const mk = m.market;
-      const items = Object.keys(mk).slice(0, 10).map((k) => {
-        const v = mk[k];
-        const fmt = typeof v === 'number' ? (/price|value/i.test(k) ? money(v) : /ratio|percent|pct|toList/i.test(k) ? (v <= 2 ? (v * 100).toFixed(1) : v.toFixed(1)) + '%' : num(v)) : show(v);
-        return `<div class="vp-tile"><div class="k">${esc(words(k))}</div><div class="v">${esc(fmt)}</div></div>`;
-      }).join('');
-      mkt = `<div class="vp-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">${items}</div>`;
-    }
-
     const ph = m.photos || [];
     const gallery = ph.length ? `<div class="vp-card vp-gal" style="margin-bottom:14px">
       <h3>${m.streetViewOnly ? 'Street view' : 'Photos'} <span class="vp-count">${ph.length > 1 ? `<span data-vp-n>1</span> of ${ph.length}` : ''}</span></h3>
@@ -670,8 +645,7 @@
         <div class="vp-card"><h3>Sale &amp; value</h3>${tiles}${lead}</div>
         <div class="vp-card"><h3>Value over time</h3>${chart}</div>
       </div>
-      <div class="vp-card" style="margin-top:14px"><h3>Home highlights for ${esc(m.street || a.street)}</h3>${facts || '<div class="vp-na">No home facts listed.</div>'}</div>
-      <div class="vp-card" style="margin-top:14px"><h3>Market trends in ${esc(m.city || a.city)}</h3>${mkt}</div>`;
+      <div class="vp-card" style="margin-top:14px"><h3>Home highlights for ${esc(m.street || a.street)}</h3>${facts || '<div class="vp-na">No home facts listed.</div>'}</div>`;
   }
 
   // --- the tabs next to SCRIPT 2 ---
