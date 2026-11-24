@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      9.9
+// @version      10.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -9,6 +9,7 @@
 // @connect      parser-external.geo.moveaws.com
 // @connect      www.zillow.com
 // @connect      www.trulia.com
+// @connect      www.realtor.com
 // @run-at       document-idle
 // @homepageURL  https://github.com/midnight-batman-4827/vici-scripts
 // @updateURL    https://raw.githubusercontent.com/midnight-batman-4827/vici-scripts/main/vici-property-lookup.user.js
