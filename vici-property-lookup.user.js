@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      11.2
+// @version      11.3
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -873,6 +873,36 @@ function readHomesPage(doc) {
     .vprop-tab.active{background:currentColor}
     .vprop-tab.active span.lbl{color:#fff}
 
+
+    #vprop-card{position:absolute;z-index:8000;box-sizing:border-box;background:#fff;color:#1f2733;border:1px solid #cfd5dd;border-radius:12px;
+      box-shadow:0 2px 10px rgba(20,30,50,.08);font:13px/1.4 'Segoe UI',Arial,sans-serif;padding:12px 16px 14px;cursor:pointer}
+    #vprop-card:hover{border-color:#9fb0c6}
+    #vprop-card .vc-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+    #vprop-card .vc-title{font-weight:700;font-size:14px}
+    #vprop-card .vc-addr{color:#5b6675}
+    #vprop-card .vc-sp{flex:1}
+    #vprop-card .vc-hint{font-size:11px;color:#8a94a3}
+    #vprop-card .vc-row{display:flex;gap:14px;align-items:stretch}
+    #vprop-card .vc-hero{flex:0 0 210px;background:#f3f6fa;border-radius:10px;padding:10px 12px}
+    #vprop-card .vc-hero:hover{background:#e9eff7}
+    #vprop-card .vc-big{font-size:28px;font-weight:700;line-height:1.15;margin:2px 0 6px}
+    #vprop-card .vc-sites{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+    #vprop-card .vc-site{display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12px;font-weight:600;color:#1f2733;background:#fff;
+      border:1px solid #d6dce4;border-radius:999px;padding:2px 8px 2px 5px;cursor:pointer}
+    #vprop-card .vc-site:hover{border-color:#6b7f99}
+    #vprop-card .vc-site img{border-radius:3px}
+    #vprop-card .vc-grid{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    #vprop-card .vc-tile{background:#f8fafc;border:1px solid #edf0f4;border-radius:8px;padding:7px 10px;min-width:0}
+    #vprop-card .vc-k{font-size:11px;color:#6b7686;text-transform:uppercase;letter-spacing:.03em}
+    #vprop-card .vc-v{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #vprop-card .vc-sub,#vprop-card .vp-owned{font-size:12px;color:#5b6675;display:inline}
+    #vprop-card .vp-owned.short{color:#b45309;font-weight:600}
+    #vprop-card .up{color:#0f7a3b} #vprop-card .down{color:#c4252b} #vprop-card .warn{color:#b45309}
+    #vprop-card .vc-warn{background:#fff7e6;border:1px solid #f3d08a;border-radius:8px;padding:7px 10px;margin-bottom:10px}
+    #vprop-card .vc-msg{padding:4px 0 2px;font-size:14px}
+    #vprop-card .vc-wait{display:flex;align-items:center;gap:10px;padding:4px 0 2px;font-size:14px;color:#5b6675}
+    #vprop-card .vc-spin{width:18px;height:18px;border:3px solid #e3e8ef;border-top-color:#4a6fa5;border-radius:50%;animation:vp-spin .8s linear infinite}
+
     #vprop-screen{position:absolute;z-index:9000;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;display:none;padding:0 0 28px;
       background:var(--bg);color:var(--ink);font:14px/1.45 var(--font)}
     #vprop-screen.open{display:block}
@@ -1363,14 +1393,16 @@ function readHomesPage(doc) {
 
   function closeScreen() {
     openKey = null;
+    setTimeout(renderAll, 0);
     if (screen) screen.classList.remove('open');
     Object.keys(tabs).forEach((k) => tabs[k].classList.remove('active'));
   }
   function toggleScreen(key) { openKey === key ? closeScreen() : openScreen(key); }
 
   function renderAll() {
-    if (!addTabs()) return;
+    if (!addTabs()) { if (card) card.style.display = 'none'; return; }
     const a = getAddress(), c = a.missing.length ? null : cache[a.full];
+    renderCard(a, c);
     SITES.forEach((s) => {
       const st = c ? siteState(c, s.key).state : 'idle';
       tabs[s.key].classList.toggle('ready', st === 'ok' || st === 'shared');
@@ -1389,6 +1421,109 @@ function readHomesPage(doc) {
     Object.keys(th).forEach((k) => { if (typeof th[k] === 'string' && !/Url|heading/.test(k)) screen.style.setProperty('--' + k, th[k]); });
     screen.innerHTML = screenHTML(a, c, openKey);
     photoIndex = 0;
+  }
+
+
+  // =====================================================================
+  //  At-a-glance card in the empty grey area under Call Notes on the main screen
+  // =====================================================================
+  let card = null, lastCardKey = '';
+  const CARD_ORDER = ['zillow', 'trulia', 'realtor', 'homes'];
+  function cardAnchor() {
+    const notes = field('call_notes') || [...document.querySelectorAll('textarea')].filter((t) => !t.closest('#vprop-screen, #vprop-card') && onScreen(t)).pop();
+    return notes || field('address1');
+  }
+  function mainPanelOf(el) { for (let e = el; e && e !== document.body; e = e.parentElement) if (/MainPanel/i.test(e.id || '')) return e; return null; }
+
+  function cardHTML(a, c) {
+    const st = (k) => siteState(c, k);
+    const ok = CARD_ORDER.filter((k) => st(k).state === 'ok' && st(k).model);
+    const label = (k) => SITES.find((x) => x.key === k).label;
+    const head = (extra) => `<div class="vc-head"><span class="vc-title">Property at a glance</span><span class="vc-addr">${esc(a.full)}</span><span class="vc-sp"></span>${extra || ''}</div>`;
+    if (!c || !c.done || (!ok.length && CARD_ORDER.some((k) => ['loading'].includes(st(k).state) || (k !== 'homes' && st(k).state === 'idle'))))
+      return head() + `<div class="vc-wait"><span class="vc-spin"></span>Looking up this property…</div>`;
+    if (!ok.length) {
+      const near = CARD_ORDER.some((k) => (st(k).near || []).length);
+      return head() + `<div class="vc-msg">${near ? 'No exact match for this address. <b>Open a property tab to pick the right home</b> from the close matches.' : 'No property details found for this address. Check the spelling, city and ZIP.'}</div>`;
+    }
+    // main numbers from the first site that loaded (Zillow first); gaps filled from the others
+    const ms = ok.map((k) => Object.assign({ key: k }, st(k).model));
+    const pick = (f) => { for (const m of ms) if (m[f] !== undefined && m[f] !== null && m[f] !== '' && m[f] !== '—') return m[f]; return null; };
+    const main = ms[0];
+    const est = main.estimate;
+    // most recent sale any site knows about (sites lag each other on recent sales)
+    const when = (d) => { const t = Date.parse(String(d || '').replace(/^(\d{4}-\d{2}-\d{2}).*/, '$1')); return isNaN(t) ? null : t; };
+    let soldDate = null, soldPrice = null, soldT = -Infinity;
+    for (const m of ms.concat(st('homes').model && !ok.includes('homes') ? [st('homes').model] : [])) {
+      const cands = [{ date: m.soldDate, price: m.soldPrice }].concat((m.priceHistory || []).filter((x) => /sold/i.test(x.event || '')));
+      for (const x of cands) { const t = when(x.date); if (t !== null && t > soldT) { soldT = t; soldDate = x.date; soldPrice = isNum(x.price) ? x.price : null; } }
+    }
+    const others = ms.filter((m) => isNum(m.estimate)).map((m) =>
+      `<button type="button" class="vc-site" data-vc-open="${m.key}" title="Open the ${esc(label(m.key))} tab">${favicon(SITES.find((x) => x.key === m.key), 14)}${kMoney(m.estimate)}</button>`).join('');
+
+    const loan = parseMoney(byLabel(/^Loan\s*Amount/i)), lv = parseRange(byLabel(/^Value\s*:?$/i));
+    const eq = (amt) => `${est - amt < 0 ? '−' : ''}${kMoney(Math.abs(est - amt))}`;
+    const ltvCls = (amt) => amt / est > 0.97 ? 'down' : amt / est > 0.8 ? 'warn' : 'up';
+    let vsLead = '—', vsSub = '';
+    if (lv && isNum(est)) {
+      vsLead = lv.lo === lv.hi ? money(lv.lo) : `${kMoney(lv.lo)}–${kMoney(lv.hi)}`;
+      vsSub = est < lv.lo ? `<span class="down">Estimate ${kMoney(lv.lo - est)} below</span>` : est > lv.hi ? `<span class="up">Estimate ${kMoney(est - lv.hi)} above</span>` : '<span class="up">Estimate within range</span>';
+    }
+    const homes = st('homes').model;
+    const openLoan = ms.concat(homes ? [homes] : []).map((m) => (m.mortgages || []).find((x) => /open/i.test(x.status) && isNum(x.amount))).find(Boolean);
+    const bb = [isNum(main.beds) || main.beds ? `${pick('beds')} bd` : '', pick('baths') ? `${pick('baths')} ba` : '', pick('sqft') ? `${Number(pick('sqft')).toLocaleString()} sqft` : ''].filter(Boolean).join(' · ');
+    const tile = (k, v, sub) => `<div class="vc-tile"><div class="vc-k">${k}</div><div class="vc-v">${v || '—'}</div>${sub ? `<div class="vc-sub">${sub}</div>` : ''}</div>`;
+    const picked = CARD_ORDER.map((k) => st(k).picked).find(Boolean);
+    const partial = CARD_ORDER.filter((k) => !ok.includes(k) && (st(k).state === 'loading'));
+
+    return head(`<span class="vc-hint">Click a site for the full page</span>`) +
+      (picked ? `<div class="vc-warn">Close match, not the exact lead address: <b>${esc(nearLabel(picked))}</b>. Confirm the address with the borrower.</div>` : '') +
+      `<div class="vc-row">
+        <div class="vc-hero" data-vc-open="${main.key}" title="Open the ${esc(label(main.key))} tab">
+          <div class="vc-k">${esc(label(main.key))} estimate</div>
+          <div class="vc-big">${esc(money(est) || '—')}</div>
+          <div class="vc-sites">${others}${partial.length ? `<span class="vc-sub">${partial.map(label).join(', ')} loading…</span>` : ''}</div>
+        </div>
+        <div class="vc-grid">
+          ${tile('Lead value', vsLead, vsSub)}
+          ${tile('Lead loan / LTV', loan && isNum(est) ? `${kMoney(loan)} · <span class="${ltvCls(loan)}">${(loan / est * 100).toFixed(1)}%</span>` : (loan ? kMoney(loan) : ''), loan && isNum(est) ? `Equity est. ${eq(loan)}` : '')}
+          ${tile('Last sold', esc(day(soldDate) || ''), [isNum(soldPrice) ? `for ${kMoney(soldPrice)}` : '', ownedFor(soldDate)].filter(Boolean).join(' · '))}
+          ${tile('Open loan on record', openLoan ? `${kMoney(openLoan.amount)}${isNum(est) ? ` · <span class="${ltvCls(openLoan.amount)}">${(openLoan.amount / est * 100).toFixed(1)}%</span>` : ''}` : '',
+            openLoan ? `${esc(openLoan.date)}, original amount${isNum(est) ? ` · Equity est. ${eq(openLoan.amount)}` : ''}` : (homes ? 'None recorded' : 'Open the Homes.com tab to check'))}
+          ${tile('Home', esc(bb), esc([pick('yearBuilt') ? 'Built ' + pick('yearBuilt') : '', pick('type')].filter(Boolean).join(' · ')))}
+          ${tile('Status', esc(pick('status') || ''), esc([pick('county'), main.listPrice ? 'List ' + kMoney(main.listPrice) : ''].filter(Boolean).join(' · ')))}
+        </div>
+      </div>`;
+  }
+
+  function renderCard(a, c) {
+    if (!card || !document.body.contains(card)) {
+      card = document.createElement('div');
+      card.id = 'vprop-card';
+      card.addEventListener('click', (e) => {
+        const o = e.target.closest('[data-vc-open]');
+        openScreen(o ? o.dataset.vcOpen : (CARD_ORDER.find((k) => c0() && siteState(c0(), k).state !== 'idle') || 'zillow'));
+      });
+      document.body.appendChild(card);
+    }
+    const c0 = () => cache[getAddress().full];
+    const anchor = cardAnchor();
+    const panel = anchor && mainPanelOf(anchor);
+    if (!anchor || a.missing.length || openKey) { card.style.display = 'none'; return; }
+    const r = anchor.getBoundingClientRect();
+    const left = Math.max(8, r.left - 64), top = r.bottom + 18;
+    // only on Vici's main screen: hide when a SCRIPT panel (or anything else) is on top of this spot
+    card.style.display = 'none';
+    const hit = document.elementFromPoint(Math.min(left + 40, window.innerWidth - 1), Math.min(top + 20, window.innerHeight - 1));
+    if (top + 20 < window.innerHeight && hit && panel && !panel.contains(hit)) return;
+    card.style.display = '';
+    const phone = [...document.querySelectorAll('iframe, #webphone, [id*="webphone" i]')].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 150 && b.left > left + 400).map((b) => b.left);
+    const right = Math.min(window.innerWidth - 12, ...(phone.length ? phone.map((x) => x - 16) : [window.innerWidth - 12]));
+    Object.assign(card.style, { left: left + window.scrollX + 'px', top: top + window.scrollY + 'px', width: Math.max(560, Math.min(1180, right - left)) + 'px' });
+    const key = a.full + '|' + CARD_ORDER.map((k) => siteState(c || {}, k).state + (siteState(c || {}, k).picked ? 'p' : '')).join(',') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
+    if (key === lastCardKey) return;
+    lastCardKey = key;
+    card.innerHTML = cardHTML(a, c);
   }
 
   // =====================================================================
