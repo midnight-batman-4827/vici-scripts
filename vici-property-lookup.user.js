@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.6
+// @version      10.7
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -102,33 +102,41 @@ function readHomesPage(doc) {
       sessionStorage.removeItem('vpropJob');
       setTimeout(() => window.close(), 300);
     };
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    // Wait for something to appear on the page. Uses a MutationObserver, which keeps working
+    // in background windows/tabs where Edge slows timers down.
+    const waitFor = (find, ms) => new Promise((resolve) => {
+      const hit = find(); if (hit) return resolve(hit);
+      const obs = new MutationObserver(() => { const h = find(); if (h) { obs.disconnect(); clearTimeout(tm); resolve(h); } });
+      obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+      const tm = setTimeout(() => { obs.disconnect(); resolve(find()); }, ms);
+    });
+    const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
     (async () => {
       if (/^\/property\//.test(location.pathname)) {
-        await sleep(1200);
+        // property page: read it as soon as its main sections are in place
+        await waitFor(() => document.querySelector('.property-info-status-pill, table.price-table, .property-estimated-info'), 15000);
         const d = readHomesPage(document);
         d.photos = homesPhotos(document, d.photos);
         return finish({ ok: true, url: location.href.split('#')[0], data: d });
       }
       // home page: type the address the way a person would and pick Homes.com's matching suggestion
-      let input = null;
-      for (let i = 0; i < 40 && !input; i++) {
-        input = [...document.querySelectorAll('input[type="text"], input:not([type])')].find((el) => el.offsetParent && /place|address|city/i.test((el.getAttribute('aria-label') || '') + (el.placeholder || '')));
-        if (!input) await sleep(250);
-      }
+      const input = await waitFor(() => [...document.querySelectorAll('input[type="text"], input:not([type])')]
+        .find((el) => /place|address|city/i.test((el.getAttribute('aria-label') || '') + (el.placeholder || ''))), 20000);
       if (!input) return finish({ ok: false, why: 'search box not found' });
       const setVal = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       input.focus();
       setVal.call(input, job.query);
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'r' }));
-      const want = String(job.street || '').toLowerCase().split(/\s+/).slice(0, 2).join(' ');
-      for (let i = 0; i < 40; i++) {
-        await sleep(250);
-        const btn = [...document.querySelectorAll('button.suggestion-btn')].find((b) => /address/i.test(b.textContent) && b.textContent.toLowerCase().replace(/\s+/g, ' ').includes(want));
-        if (btn) { btn.click(); return; } // the page navigates to the property; this helper runs again there
-      }
-      finish({ ok: false, why: 'no matching address on Homes.com' });
+      // match on house number + city ("8615 West 81 st Street" vs "8615 W 81st St" both start 8615)
+      const num = (norm(job.street).match(/^\d+[a-z]?/) || [''])[0];
+      const city = norm(job.city);
+      const btn = await waitFor(() => [...document.querySelectorAll('button.suggestion-btn')].find((b) => {
+        const t = norm(b.textContent);
+        return /address/.test(t) && t.startsWith(num + ' ') && (!city || t.includes(city));
+      }), 20000);
+      if (!btn) return finish({ ok: false, why: 'no matching address on Homes.com' });
+      btn.click(); // the page navigates to the property; this helper runs again there
     })();
   }
 
@@ -557,7 +565,7 @@ function readHomesPage(doc) {
   function homesLookup(a) {
     return new Promise((resolve) => {
       const id = Date.now();
-      GM_setValue('vpHomesJob', { id, t: id, query: a.full, street: a.street });
+      GM_setValue('vpHomesJob', { id, t: id, query: a.full, street: a.street, city: a.city });
       let tab = null, done = false;
       const listener = GM_addValueChangeListener('vpHomesResult', (name, oldV, v) => {
         if (!v || v.id !== id || done) return;
@@ -565,8 +573,17 @@ function readHomesPage(doc) {
         try { tab && tab.close(); } catch (e) {}
         resolve(v);
       });
-      tab = GM_openInTab('https://www.homes.com/#vprop-' + id, { active: false, insert: true, setParent: true });
-      setTimeout(() => { if (done) return; done = true; GM_removeValueChangeListener(listener); try { tab && tab.close(); } catch (e) {} resolve(null); }, 40000);
+      // A small pop-up window keeps running at full speed (Edge slows down background tabs);
+      // if pop-ups are blocked, fall back to a background tab.
+      const url = 'https://www.homes.com/#vprop-' + id;
+      const w = 520, h = 420;
+      let pop = null;
+      try {
+        pop = window.open(url, 'vprop-homes', `popup=yes,width=${w},height=${h},left=${Math.max(0, screen.availWidth - w - 20)},top=${Math.max(0, screen.availHeight - h - 60)}`);
+      } catch (e) { pop = null; }
+      tab = pop ? { close: () => { try { pop.close(); } catch (e) {} } }
+        : GM_openInTab(url, { active: false, insert: true, setParent: true });
+      setTimeout(() => { if (done) return; done = true; GM_removeValueChangeListener(listener); try { tab && tab.close(); } catch (e) {} resolve(null); }, 45000);
     });
   }
 
