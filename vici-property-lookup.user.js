@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      11.7
+// @version      11.8
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1330,7 +1330,12 @@ function readHomesPage(doc) {
     const sp = document.getElementById('ScriptPanel');
     const r = sp && sp.getBoundingClientRect();
     let left, top, width, height;
-    if (r && r.width > 300 && r.height > 200) { left = r.left; top = r.top; width = r.width; height = r.height; }
+    if (r && r.width > 300 && r.height > 200) {
+      left = r.left; top = r.top;
+      // never wider/taller than the window (zoomed in, Vici's panel can run past the edge)
+      width = Math.min(r.width, window.innerWidth - Math.max(0, left) - 10);
+      height = Math.min(r.height, window.innerHeight - Math.max(0, top) - 10);
+    }
     else {
       const t = tabs[SITES[0].key].getBoundingClientRect();
       left = 157; top = t.bottom + 24;
@@ -1539,5 +1544,16 @@ function readHomesPage(doc) {
 
   refresh();
   setInterval(refresh, 1000);
-  window.addEventListener('resize', () => { if (screen && screen.classList.contains('open')) placeScreen(); });
+  // zooming (Ctrl + / Ctrl -) fires resize: refit the screen and redraw its charts at the new width
+  let resizeT = null, lastW = 0;
+  window.addEventListener('resize', () => {
+    if (screen && screen.classList.contains('open')) placeScreen();
+    clearTimeout(resizeT);
+    resizeT = setTimeout(() => {
+      lastCardKey = '';
+      const w = screen ? screen.clientWidth : 0;
+      if (screen && openKey && Math.abs(w - lastW) > 60) { lastW = w; const y = screen.scrollTop; lastScreenKey = ''; renderAll(); screen.scrollTop = y; }
+      else renderAll();
+    }, 300);
+  });
 })();
