@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      11.3
+// @version      11.6
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -16,6 +16,7 @@
 // @connect      www.zillow.com
 // @connect      www.trulia.com
 // @connect      www.realtor.com
+// @connect      raw.githubusercontent.com
 // @run-at       document-idle
 // @homepageURL  https://github.com/midnight-batman-4827/vici-scripts
 // @updateURL    https://raw.githubusercontent.com/midnight-batman-4827/vici-scripts/main/vici-property-lookup.user.js
@@ -1534,6 +1535,58 @@ function readHomesPage(doc) {
     if (!a.missing.length) lookup(a); // starts the lookups as soon as a lead's address pops up
     renderAll();
   }
+
+
+  // =====================================================================
+  //  Update check – compares this version with the one on GitHub and offers a one-click update
+  // =====================================================================
+  const SCRIPT_URL = 'https://raw.githubusercontent.com/midnight-batman-4827/vici-scripts/main/vici-property-lookup.user.js';
+  const MY_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) || '0';
+  const newer = (x, y) => { // is version x newer than y?
+    const p = (v) => String(v).split('.').map((n) => parseInt(n, 10) || 0);
+    const a = p(x), b = p(y);
+    for (let i = 0; i < Math.max(a.length, b.length); i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); }
+    return false;
+  };
+  let updateBar = null;
+  function showUpdateBar(v) {
+    if (updateBar && document.body.contains(updateBar)) return;
+    updateBar = document.createElement('div');
+    updateBar.id = 'vprop-update';
+    updateBar.setAttribute('role', 'status');
+    updateBar.innerHTML = `<span><b>The property tabs have a new version.</b></span>
+      <button type="button" data-u="go">Update now</button><button type="button" data-u="x" aria-label="Later" title="Later">✕</button>`;
+    Object.assign(updateBar.style, { position: 'fixed', zIndex: 2147483646, top: '6px', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: '12px',
+      background: '#1f2733', color: '#fff', font: '13px/1.3 Segoe UI, Arial, sans-serif', padding: '7px 8px 7px 14px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,.3)' });
+    updateBar.querySelectorAll('button').forEach((b) => Object.assign(b.style, { font: 'inherit', fontWeight: '600', border: '0', borderRadius: '6px', cursor: 'pointer', padding: '5px 12px',
+      background: b.dataset.u === 'go' ? '#2f7cf6' : 'transparent', color: '#fff' }));
+    updateBar.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.u === 'go') {
+        window.open(SCRIPT_URL + '?v=' + encodeURIComponent(v), '_blank'); // Tampermonkey opens its install page for this link
+        updateBar.innerHTML = '<span>On the page that just opened, click the <b>Update</b> button. Then press <b>F5</b> on Vici when you\'re not on a call.</span>';
+        setTimeout(() => updateBar && updateBar.remove(), 30000);
+      } else {
+        GM_setValue('vpUpdateSnooze', { v, until: Date.now() + 2 * 3600e3 }); // ask again in 2 hours
+        updateBar.remove();
+      }
+    });
+    document.body.appendChild(updateBar);
+  }
+  function checkForUpdate() {
+    GM_xmlhttpRequest({
+      method: 'GET', url: SCRIPT_URL + '?t=' + Date.now(), timeout: 15000, headers: { 'Cache-Control': 'no-cache' },
+      onload: (r) => {
+        const v = ((r.responseText || '').match(/@version\s+([\d.]+)/) || [])[1];
+        if (!v || !newer(v, MY_VERSION)) return;
+        const sn = GM_getValue('vpUpdateSnooze', null);
+        if (sn && sn.v === v && Date.now() < sn.until) return;
+        showUpdateBar(v);
+      }
+    });
+  }
+  setTimeout(checkForUpdate, 5000);
+  setInterval(checkForUpdate, 30 * 60e3); // every 30 minutes while Vici is open
 
   refresh();
   setInterval(refresh, 1000);
