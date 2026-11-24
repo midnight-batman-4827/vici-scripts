@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.8
+// @version      12.9
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1515,7 +1515,29 @@ function readHomesPage(doc) {
         #vl-form .ttl{font:bold 11px Arial;color:#333;margin:0 0 4px}
         #vl-form #call_notes{height:46px}
         .vl-btn{width:154px;text-align:center}
-        #vl-pause.vl-empty{visibility:hidden}
+        #vl-pause,[id^="vl-b-"],#DiaLlOgButtonspan,#vl-leadsearch,#CallbacksButtons{visibility:hidden!important}
+        #vl-col{width:160px;display:flex;flex-direction:column;gap:6px}
+        #vl-col .mb{display:flex;align-items:center;gap:8px;height:30px;padding:0 11px;border-radius:8px;font:600 12px "Segoe UI",Arial;letter-spacing:.02em;
+          border:1px solid transparent;box-shadow:0 1px 2px rgba(0,0,0,.15);cursor:pointer;text-align:left;width:100%;user-select:none}
+        #vl-col .mb svg{width:15px;height:15px;flex:none}
+        #vl-col .mb small{display:block;font-weight:400;font-size:10px;opacity:.85;letter-spacing:0}
+        #vl-col .neutral{background:#fff;color:#1d2530;border-color:#c4ccd6}
+        #vl-col .park{background:#eef2ff;color:#3346a8;border-color:#b8c3f2}
+        #vl-col .xfer{background:#f3ecff;color:#6b3fb5;border-color:#d4c3f2}
+        #vl-col .hang{background:#c4252b;color:#fff}
+        #vl-col .paused{background:#ffd84d;color:#5c4400;border-color:#e0b800;height:40px}
+        #vl-col .active{background:#1aa33c;color:#fff;height:40px}
+        #vl-col .other{background:#2563eb;color:#fff;height:40px}
+        #vl-col .dis{opacity:.4;box-shadow:none;filter:grayscale(1);cursor:default}
+        #vl-col .pz.dis{height:40px}
+        #vl-col .dtmf{display:flex;gap:6px}#vl-col .dtmf .mb{flex:1}
+        #vl-col .dtmf input{width:44px;height:30px;border:1px solid #c4ccd6;border-radius:8px;font:13px Arial;padding:0 6px;box-sizing:border-box}
+        #vl-col .lks{margin-top:6px;display:flex;flex-direction:column;gap:1px}
+        #vl-col .lk{display:flex;align-items:center;gap:7px;height:26px;padding:0 8px;border-radius:7px;color:#2b3a55;font:600 12px "Segoe UI",Arial;cursor:pointer;user-select:none}
+        #vl-col .lk:hover{background:#e2e6eb}#vl-col .lk svg{width:14px;height:14px;color:#2563eb;flex:none}
+        #vl-col .lk.dis{opacity:.45;cursor:default}
+        #vl-col .lk b{margin-left:auto;font-weight:600;font-size:10.5px;background:#e2e6eb;color:#5b6675;border-radius:9px;padding:1px 7px}
+        #vl-col .lk b.hot{background:#c4252b;color:#fff}
         #vl-hk{width:166px;height:38px;border:0;border-radius:9px;background:linear-gradient(#3d78d6,#2a5bb0);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;
           font:600 14px "Segoe UI",Arial,sans-serif;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:pointer}
         #vl-hk i{width:10px;height:10px;border-radius:50%;background:#9fb7de}
@@ -1590,6 +1612,8 @@ function readHomesPage(doc) {
           </fieldset></div>
           <div class="ttl">CALL NOTES</div><span data-s="call_notes"></span>`;
         f.querySelectorAll('[data-s]').forEach((slot) => slot.dataset.s.split(',').forEach((id) => move(field(id), slot)));
+        // Edge was autofilling these (e.g. the login number into Revolving Debt); a made-up token stops it
+        f.querySelectorAll('input[type=text],textarea').forEach((i) => i.setAttribute('autocomplete', 'vici-lead-' + (i.id || 'x')));
         // Name row: First / MI / Last side by side
         const mi = byId('middle_initial'); if (mi) mi.placeholder = 'MI';
         stash(byId('comments')); stash(byId('viewcommentsdisplay'));
@@ -1600,9 +1624,6 @@ function readHomesPage(doc) {
       if (clock) clock.style.visibility = 'hidden';
     }
 
-    // pause bar only shows when it's a real button (paused / active), not the empty grey bar during calls
-    const pb = byId('vl-pause'), dc = byId('DiaLControl');
-    if (pb && dc) { const imgs = [...dc.querySelectorAll('img')]; pb.classList.toggle('vl-empty', !imgs.length || imgs.every((i) => /_OFF\.gif|blank/i.test(i.src))); }
 
     // once per login: WebPhone panel hidden (it keeps running), Agents View shown
     if (!viewsSet && byId('webphoneLink') && byId('AgentViewLink')) {
@@ -1612,9 +1633,78 @@ function readHomesPage(doc) {
       if (av && /View\s*\+/.test(av.textContent)) av.click();
     }
     liveBadge();
+    modernButtons();
     hotKeysSwitch();
     try { pitchSheet(); } catch (e) {}
     scrollLock();
+  }
+
+
+  // ---------- Modern button column. Each button mirrors Vici's real button (still on the page, hidden):
+  // same available / greyed-out state, and clicking it clicks Vici's own button. ----------
+  const BI = {
+    play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+    pause: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+    form: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
+    park: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M10 16V8h3a2.5 2.5 0 010 5h-3"/></svg>',
+    xfer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>',
+    hang: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 9c-3.2 0-6.2.8-8.6 2.3-.6.4-.9 1.1-.8 1.8l.4 2c.1.7.8 1.2 1.5 1.1l3-.5c.6-.1 1-.6 1.1-1.2l.2-1.6c1-.3 2.1-.4 3.2-.4s2.2.1 3.2.4l.2 1.6c.1.6.5 1.1 1.1 1.2l3 .5c.7.1 1.4-.4 1.5-1.1l.4-2c.1-.7-.2-1.4-.8-1.8C18.2 9.8 15.2 9 12 9z"/></svg>',
+    pad: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="6" cy="11" r="2"/><circle cx="12" cy="11" r="2"/><circle cx="18" cy="11" r="2"/><circle cx="6" cy="17" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="18" cy="17" r="2"/></svg>',
+    dial: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/></svg>',
+    cb: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
+  };
+  // what Vici's button currently is: its link (if clickable), picture and alt text
+  const viciBtn = (el) => { if (!el) return null; const a = el.querySelector('a'), img = el.querySelector('img');
+    const src = img ? img.getAttribute('src') || '' : ''; return { a, src, alt: img ? img.alt || '' : (a ? a.textContent : ''), on: !!a && !/_OFF\.|blank/i.test(src) }; };
+  const clickVici = (a) => { if (a) a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); };
+  const btnLabel = (alt) => ({ 'hangup customer': 'HANG UP', 'transfer - conference': 'TRANSFER · CONF', 'send dtmf': 'DTMF' }[String(alt).toLowerCase().trim()] || String(alt).toUpperCase().trim());
+  function modernButtons() {
+    const col = box('vl-col', L.pause[0], L.pause[1] - 7);
+    if (!col.childElementCount) {
+      col.innerHTML = `<div class="mb pz" data-b="pause"></div>
+        <div class="mb neutral" data-b="WebFormSpan">${BI.form}<span></span></div>
+        <div class="mb park" data-b="ParkControl">${BI.park}<span></span></div>
+        <div class="mb xfer" data-b="XferControl">${BI.xfer}<span></span></div>
+        <div class="mb hang" data-b="HangupControl">${BI.hang}<span></span></div>
+        <div class="dtmf"><div class="mb neutral" data-b="SendDTMF">${BI.pad}<span>DTMF</span></div></div>
+        <div class="lks"><div class="lk" data-l="manual">${BI.dial}<span>Manual dial</span></div>
+          <div class="lk" data-l="search">${BI.search}<span>Lead search</span></div>
+          <div class="lk" data-l="cb">${BI.cb}<span>Callbacks</span><b>0</b></div></div>`;
+      const dt = document.querySelector('input[name="conf_dtmf"]'); if (dt) col.querySelector('.dtmf').appendChild(dt);  // Vici's own DTMF box
+      col.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-b],[data-l]'); if (!b || b.classList.contains('dis')) return;
+        e.preventDefault();
+        if (b.dataset.b === 'pause') clickVici(byId('DiaLControl') && byId('DiaLControl').querySelector('a'));
+        else if (b.dataset.b) { const v = viciBtn(byId(b.dataset.b)); clickVici(v && v.a); }
+        else clickVici(linkFor(b.dataset.l));
+        setTimeout(modernButtons, 150);
+      });
+    }
+    // pause / resume (Vici swaps this picture as your status changes)
+    const pz = col.querySelector('[data-b="pause"]'), pv = viciBtn(byId('DiaLControl'));
+    if (pz && pv) {
+      const st = /paused/i.test(pv.src) ? ['paused', BI.play, 'YOU ARE PAUSED', 'Click to take calls']
+        : /active/i.test(pv.src) ? ['active', BI.pause, 'YOU ARE ACTIVE', 'Click to pause']
+        : pv.on ? ['other', BI.play, btnLabel(pv.alt), '']
+        : ['neutral dis', BI.pause, 'ON A CALL', 'Pause after this call'];
+      const key = st.join('|');
+      if (pz.dataset.k !== key) { pz.dataset.k = key; pz.className = 'mb pz ' + st[0]; pz.innerHTML = `${st[1]}<div>${st[2]}${st[3] ? `<small>${st[3]}</small>` : ''}</div>`; }
+    }
+    col.querySelectorAll('[data-b]:not([data-b="pause"])').forEach((b) => {
+      const v = viciBtn(byId(b.dataset.b)); if (!v) return;
+      b.classList.toggle('dis', !v.on);
+      if (b.dataset.b !== 'SendDTMF' && v.alt) b.querySelector('span').textContent = btnLabel(v.alt);
+    });
+    // links: Manual dial, Lead search, Callbacks (with the count Vici shows)
+    col.querySelectorAll('[data-l]').forEach((l) => l.classList.toggle('dis', !linkFor(l.dataset.l)));
+    const cba = linkFor('cb'), n = cba ? (cba.textContent.match(/\d+/) || ['0'])[0] : '0';
+    const badge = col.querySelector('[data-l="cb"] b'); badge.textContent = n; badge.classList.toggle('hot', n !== '0');
+  }
+  function linkFor(k) {
+    if (k === 'manual') return byId('MDstatusSpan') && byId('MDstatusSpan').querySelector('a');
+    if (k === 'cb') return byId('CBstatusSpan') && byId('CBstatusSpan').querySelector('a');
+    const ls = byId('vl-leadsearch'); return ls && ls.querySelector('a');
   }
 
   // ---------- Live-call light as a badge (Vici's own picture stays, hidden; it tells us the state) ----------
@@ -1748,6 +1838,7 @@ function readHomesPage(doc) {
     if (!ps.childElementCount) {
       if (!byId('vl-pitch-style')) { const st = document.createElement('style'); st.id = 'vl-pitch-style'; st.textContent = PS_CSS; document.head.appendChild(st); }
       ps.innerHTML = pitchHTML();
+      ps.querySelectorAll('input:not([type=password]),textarea').forEach((i) => i.setAttribute('autocomplete', 'pitch-' + (i.dataset.k || 'x')));
       ps.addEventListener('input', (e) => { const f = e.target.closest('[data-k]'); if (!f) return; f.dataset.touched = '1'; f.classList.remove('auto');
         if (f.classList.contains('grow')) { f.style.height = 'auto'; f.style.height = f.scrollHeight + 2 + 'px'; }
         if (f.dataset.k === 'ssn' && byId('alt_phone')) byId('alt_phone').value = f.value; });
