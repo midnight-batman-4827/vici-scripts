@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.5
+// @version      12.6
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1463,7 +1463,7 @@ function readHomesPage(doc) {
     form: [170, 114],             // the form's own 14px top padding is drawn by Vici's grey, so 100 + 14
     card: [15, 465, 890],
     seconds: [1510, 30], liveLight: [1610, 25], groups: [1765, 5],
-    agentsList: [1720, 45], agentsLink: [1725, 30], hotkeys: [1724, 556]   // under the Other Agents box
+    agentsList: [1720, 45], agentsLink: [1725, 30], hotkeys: [1724, 556], pitch: [918, 70, 626, 733]   // under the Other Agents box
     // 915-1545 x 67-805 is kept free for the pitch sheet
   };
   const byId = (id) => document.getElementById(id);
@@ -1607,6 +1607,7 @@ function readHomesPage(doc) {
       if (av && /View\s*\+/.test(av.textContent)) av.click();
     }
     hotKeysSwitch();
+    try { pitchSheet(); } catch (e) {}
     scrollLock();
   }
 
@@ -1646,9 +1647,173 @@ function readHomesPage(doc) {
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) && t.type !== 'button') e.stopImmediatePropagation();
   }, true);
 
+
+  // ---------- Pitch sheet (Mortgageusa's paper pitch sheet, filled in from the lead + property sites) ----------
+  // Blue fields were filled in automatically; once the LO types in one it turns white and is never overwritten.
+  // Nothing is saved: the sheet clears when the next call (lead) comes up.
+  const PS_PICK1 = ['vet', 'married', 'inc', 'cmarried', 'cinc', 'occ', 'rtype', 'escrow'];   // pick-one groups
+  function pitchHTML() {
+    const t = (k, ph) => `<input class="f" data-k="${k}"${ph ? ` placeholder="${ph}"` : ''}>`;
+    const w = (k, cls) => `<input class="f ${cls}" data-k="${k}">`;
+    const yn = (g, a = 'Y', b = 'N') => `<span class="yn" data-g="${g}"><button type="button" class="t">${a}</button><button type="button" class="t">${b}</button></span>`;
+    const pills = (g, list) => `<span class="opts" data-g="${g}">${list.map((x) => `<button type="button" class="p">${x}</button>`).join('')}</span>`;
+    const R = (...a) => `<div class="row">${a.join('')}</div>`, L = (x) => `<label>${x}</label>`;
+    return `<div class="bar"><b>Pitch sheet<span data-k="title"></span></b><button type="button" data-a="pdf">Save as PDF</button><button type="button" class="go" data-a="send" title="Coming next: tell Claude how sheets get to the team lead">Send to Team Lead</button></div>
+      <div class="legend"><i></i>Filled in from the lead and property sites. Confirm each one; typing over it is fine.</div>
+      <div class="page">
+      ${R(L('GOALS:'), t('goals'))}${R(t('goals2'))}${R(L('Notes:'), t('notes'))}<div class="rule"></div>
+      ${R(L('Veteran'), yn('vet'), L('% of Disability'), w('disab', 'sm'), L('Email'), t('email'))}
+      ${R(L('Borrower'), t('borrower'), L('Married'), yn('married'), '<span class="q">"Are you and your spouse on the same page?"</span>')}
+      ${R(L('SSN'), '<input class="f" data-k="ssn" type="password" autocomplete="off" title="Same as the SSN box on the lead">', L('DOB'), t('dob'), L('Credit Score'), w('credit', 'sm'))}
+      ${R(L('Phone # Home'), t('phone'), L('Cell'), t('cell'), L('Work'), t('work'))}
+      ${R(L('Present Address'), t('addr'), L('City:'), w('city', 'md'))}
+      ${R(L('State:'), w('state', 'sm'), L('Zip:'), w('zip', 'sm'), L('County:'), t('county'))}
+      ${R(L('Employer'), t('emp'), L('Pos./Title'), t('title1'), L('Yrs:'), w('yrs', 'sm'))}
+      ${R(L('Income'), t('income'), yn('inc', '1099', 'W2'), L('Prev. Emp'), t('prev'))}
+      ${R(L('SSI'), t('ssi'), L('Pension'), t('pension'), L('Disability'), t('dis'), L('IRA'), t('ira'))}
+      ${R(L('Additional Income'), t('addl'))}<div class="rule"></div>
+      ${R(L('Co Borrower'), t('cob'), L('Married'), yn('cmarried'), L('DOB'), w('cdob', 'md'), L('Credit Score'), w('ccredit', 'sm'))}
+      ${R(L('Employer'), t('cemp'), L('Pos./Title'), t('ctitle'), L('Yrs'), w('cyrs', 'sm'))}
+      ${R(L('Employer Address'), t('cempaddr'))}
+      ${R(L('Income'), t('cincome'), yn('cinc', '1099', 'W2'), L('Prev. Emp'), t('cprev'))}
+      ${R(L('SSI'), t('cssi'), L('Pension'), t('cpension'), L('Disability'), t('cdis'), L('IRA'), t('cira'))}
+      ${R(L('Additional Income'), t('caddl'))}<div class="rule"></div>
+      <div class="h">Subject Property Info</div>${pills('occ', ['Primary', 'Second', 'Investment'])}
+      <div class="h">Property Type</div>${pills('ptype', ['Condo', 'SFR', 'Townhouse', 'Manufactured', 'Mobile', '2-4 Unit'])}
+      ${R(L('Last Refi'), w('refi', 'sm'), L('Purchase YR'), w('pyear', 'sm'), L('Purchase Price'), t('pprice'))}
+      ${R(L('1st Mortgage Holder'), t('holder'), L('Balance:'), w('balance', 'md'))}
+      ${R(L('Client Value'), t('value'), '<span class="est" data-k="estnote"></span>')}
+      ${R(L('Payment'), w('payment', 'md'), L('Escrowed:'), yn('escrow'), L('Taxes'), w('taxes', 'md'))}
+      ${R(L('Insurance'), t('ins'), L('PMI:'), t('pmi'), L('HOA'), t('hoa'))}
+      ${R(L('Rate'), w('rate', 'sm'), L('Term:'), w('term', 'sm'))}
+      <div class="opts2">${pills('rtype', ['Fixed', 'Adjustable', 'Int. Only'])}<span class="dot">·</span>${pills('prog', ['FHA', 'Conv', 'VA', 'Fannie', 'Freddie'])}</div><div class="rule"></div>
+      <div class="two"><div>${R(L('Assets: Checking/Savings'), t('checking'))}${R(L('Retirement Accounts'), t('retire'))}${R(L('Brokerage Accounts'), t('broker'))}</div>
+        <div class="box">Other Offer Received:<textarea data-k="offer"></textarea></div></div><div class="rule"></div>
+      <div class="box">Pitch: &nbsp; ${pills('pitch', ['CONV', 'FHA', 'VA'])}<textarea data-k="pitch" style="min-height:80px"></textarea></div>
+      </div>`;
+  }
+  const PS_CSS = `
+    #vl-pitch{background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden;font:12px Arial,Helvetica,sans-serif;color:#111}
+    #vl-pitch *{box-sizing:border-box}
+    #vl-pitch .bar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f1f3f6;border-bottom:1px solid #d6dbe2}
+    #vl-pitch .bar b{font-size:13px;flex:1}
+    #vl-pitch .bar button{font:600 12px "Segoe UI",Arial;border:1px solid #c4ccd6;background:#fff;border-radius:6px;padding:5px 10px;cursor:pointer}
+    #vl-pitch .bar button.go{background:#2563eb;border-color:#2563eb;color:#fff;opacity:.6}
+    #vl-pitch .legend{font-size:11px;color:#555;padding:4px 12px;background:#fafbfc;border-bottom:1px solid #eceff3}
+    #vl-pitch .legend i{display:inline-block;width:10px;height:10px;background:#e7f0ff;border:1px solid #9db8e8;vertical-align:-1px;margin-right:4px}
+    #vl-pitch .page{flex:1;overflow:auto;overscroll-behavior:contain;padding:12px 20px 26px}
+    #vl-pitch .row{display:flex;align-items:flex-end;gap:8px;margin:7px 0}
+    #vl-pitch label{white-space:nowrap;font-weight:600;font-size:11.5px}
+    #vl-pitch .f{flex:1;border:0;border-bottom:1px solid #222;font:12px Arial;padding:1px 3px;min-width:0;height:18px;background:transparent;color:#111}
+    #vl-pitch .f.auto{background:#e7f0ff;border-bottom-color:#4a77c8}
+    #vl-pitch .f:focus{outline:2px solid #2563eb;outline-offset:1px;background:#fff}
+    #vl-pitch .sm{flex:0 0 60px}#vl-pitch .md{flex:0 0 110px}
+    #vl-pitch .rule{border-top:2px solid #111;margin:10px 0 6px}
+    #vl-pitch .h{font-weight:700;text-align:center;margin:8px 0 3px}
+    #vl-pitch .opts{display:inline-flex;gap:6px;justify-content:center;flex-wrap:wrap}
+    #vl-pitch .h+.opts{display:flex}
+    #vl-pitch .opts2{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:center;margin-top:6px}
+    #vl-pitch .t,#vl-pitch .p{font:11.5px Arial;border:1px solid #888;background:#fff;color:#111;border-radius:10px;padding:1px 8px;margin:0 1px;cursor:pointer}
+    #vl-pitch .t.on,#vl-pitch .p.on{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:700}
+    #vl-pitch .p.auto:not(.on){border-color:#4a77c8}
+    #vl-pitch .p.on.auto{background:#4a77c8}
+    #vl-pitch .yn{white-space:nowrap}
+    #vl-pitch .q{border:1.5px solid #111;padding:3px 8px;font-size:11.5px;white-space:nowrap}
+    #vl-pitch .two{display:flex;gap:14px}#vl-pitch .two>*{flex:1}
+    #vl-pitch .box{border:1.5px solid #111;min-height:70px;padding:5px 7px;font-weight:600;font-size:11.5px}
+    #vl-pitch textarea{display:block;width:100%;border:0;resize:vertical;font:12px Arial;margin-top:4px;min-height:50px;outline:none;background:transparent;color:#111}
+    #vl-pitch .est{font-size:10px;color:#4a77c8;white-space:nowrap}`;
+
+  let psLead = null;
+  const typeToPill = (t) => { t = String(t || '').toLowerCase();
+    return /condo/.test(t) ? 'Condo' : /town/.test(t) ? 'Townhouse' : /manufactured/.test(t) ? 'Manufactured' : /mobile/.test(t) ? 'Mobile'
+      : /multi|duplex|triplex|fourplex|2-4|2 to 4/.test(t) ? '2-4 Unit' : /single|sfr|house/.test(t) ? 'SFR' : ''; };
+  function pitchSheet() {
+    const [x, y, w, h] = L.pitch;
+    const ps = box('vl-pitch', x, y, `width:${w}px;height:${h}px;z-index:7`);
+    if (!ps.childElementCount) {
+      if (!byId('vl-pitch-style')) { const st = document.createElement('style'); st.id = 'vl-pitch-style'; st.textContent = PS_CSS; document.head.appendChild(st); }
+      ps.innerHTML = pitchHTML();
+      ps.addEventListener('input', (e) => { const f = e.target.closest('[data-k]'); if (!f) return; f.dataset.touched = '1'; f.classList.remove('auto');
+        if (f.dataset.k === 'ssn' && byId('alt_phone')) byId('alt_phone').value = f.value; });
+      ps.addEventListener('click', (e) => {
+        const a = e.target.closest('[data-a]');
+        if (a) { e.preventDefault(); if (a.dataset.a === 'pdf') pitchPDF(); else a.title = 'Coming next: tell Claude how sheets get to the team lead'; return; }
+        const b = e.target.closest('.t,.p'); if (!b) return;
+        e.preventDefault();
+        const g = b.parentElement; g.dataset.touched = '1';
+        if (PS_PICK1.includes(g.dataset.g) || b.classList.contains('t')) [...g.children].forEach((o) => { if (o !== b) o.classList.remove('on'); });
+        b.classList.toggle('on'); g.querySelectorAll('.auto').forEach((o) => o.classList.remove('auto'));
+      });
+    }
+    // hidden whenever a property tab or Vici's SCRIPT panels are up
+    const sp = byId('ScriptPanel'), sp2 = byId('ScriptPanel2');
+    const covered = openKey || [sp, sp2].some((e) => e && getComputedStyle(e).visibility === 'visible');
+    ps.style.display = covered ? 'none' : 'flex';
+
+    // new call: start a clean sheet
+    const lead = byId('lead_id') ? byId('lead_id').value : '';
+    if (lead !== psLead) {
+      psLead = lead;
+      ps.querySelectorAll('[data-k]').forEach((f) => { if ('value' in f) f.value = ''; else f.textContent = ''; delete f.dataset.touched; f.classList.remove('auto'); });
+      ps.querySelectorAll('[data-g]').forEach((g) => { delete g.dataset.touched; g.querySelectorAll('.on,.auto').forEach((o) => o.classList.remove('on', 'auto')); });
+      ps.querySelector('.page').scrollTop = 0;
+    }
+    // fill in what we know (never over the LO's own typing)
+    const val = (id) => (byId(id) ? String(byId(id).value || '').trim() : '');
+    const set = (k, v) => { const f = ps.querySelector(`[data-k="${k}"]`); if (!f || f.dataset.touched || !v) return;
+      if ('value' in f && f.tagName !== 'SPAN') { if (f.value !== v) { f.value = v; f.classList.add('auto'); } } else f.textContent = v; };
+    const pick = (g, label) => { const grp = ps.querySelector(`[data-g="${g}"]`); if (!grp || grp.dataset.touched || !label) return;
+      grp.querySelectorAll('.p').forEach((b) => { const on = b.textContent.toLowerCase() === label.toLowerCase(); b.classList.toggle('on', on); b.classList.toggle('auto', on); }); };
+    const name = [val('first_name'), val('last_name')].filter(Boolean).join(' ');
+    set('borrower', name); ps.querySelector('[data-k="title"]').textContent = name ? ' · ' + name : '';
+    const ph = val('phone_number').replace(/\D/g, '');
+    set('phone', ph.length === 10 ? `${ph.slice(0, 3)}-${ph.slice(3, 6)}-${ph.slice(6)}` : ph);
+    set('addr', val('address1')); set('city', val('city')); set('state', val('state')); set('zip', val('postal_code').slice(0, 5));
+    set('credit', val('title')); set('rate', val('security_phrase')); set('value', val('province'));
+    const ssnF = ps.querySelector('[data-k="ssn"]'); if (ssnF && !ssnF.dataset.touched && val('alt_phone')) ssnF.value = val('alt_phone');
+    const lt = val('vendor_lead_code').toLowerCase();
+    pick('prog', /fha/.test(lt) ? 'FHA' : /\bva\b/.test(lt) ? 'VA' : /conv/.test(lt) ? 'Conv' : /fannie/.test(lt) ? 'Fannie' : /freddie/.test(lt) ? 'Freddie' : '');
+    // property sites (whichever have loaded)
+    const a = getAddress(), c = a.missing.length ? null : cache[a.full];
+    if (c) {
+      const ms = CARD_ORDER.map((k) => siteState(c, k)).filter((st) => st.state === 'ok' && st.model).map((st) => st.model);
+      const first = (f) => { for (const m of ms) if (m[f] !== undefined && m[f] !== null && m[f] !== '' && m[f] !== '—') return m[f]; return null; };
+      set('county', String(first('county') || '').replace(/\s*county$/i, ''));
+      let sd = null, sp0 = null, sT = -Infinity;   // latest sale any site knows about
+      ms.forEach((m) => [{ date: m.soldDate, price: m.soldPrice }].concat((m.priceHistory || []).filter((e) => /sold/i.test(e.event || ''))).forEach((e) => {
+        const t = Date.parse(String(e.date || '').slice(0, 10)); if (!isNaN(t) && t > sT) { sT = t; sd = e.date; sp0 = isNum(e.price) ? e.price : null; } }));
+      if (sd) set('pyear', String(new Date(sT).getUTCFullYear()));
+      if (isNum(sp0)) set('pprice', money(sp0));
+      pick('ptype', typeToPill(first('type')));
+      const taxes = ms.map((m) => (m.taxHistory || []).filter((t) => isNum(t.tax)).sort((p, q) => (+q.year) - (+p.year))[0]).find(Boolean);
+      if (taxes) set('taxes', money(taxes.tax) + '/yr');
+      const hoa = first('hoa'); if (hoa) set('hoa', String(hoa));
+      const z = ms[0]; const note = ps.querySelector('[data-k="estnote"]');
+      if (note && z && isNum(z.estimate)) note.textContent = 'Zillow est. ' + money(z.estimate);
+    }
+  }
+  // one-page printable copy; Edge's print window has "Save as PDF"
+  function pitchPDF() {
+    const ps = byId('vl-pitch'); if (!ps) return;
+    const clone = ps.querySelector('.page').cloneNode(true);
+    clone.querySelectorAll('input').forEach((i) => {
+      const v = i.dataset.k === 'ssn' ? (i.value ? '***-**-' + i.value.replace(/\D/g, '').slice(-4) : '') : i.value;
+      const s = document.createElement('span'); s.className = i.className.replace('auto', ''); s.textContent = v; i.replaceWith(s); });
+    clone.querySelectorAll('textarea').forEach((t) => { const d = document.createElement('div'); d.style.whiteSpace = 'pre-wrap'; d.style.fontWeight = '400'; d.textContent = t.value; t.replaceWith(d); });
+    const win = window.open('', '_blank', 'width=820,height=1000');
+    if (!win) { alert('Allow pop-ups for Vici to save the pitch sheet as a PDF.'); return; }
+    win.document.write(`<!DOCTYPE html><title>Pitch sheet</title><style>${PS_CSS.replace(/#vl-pitch /g, '')}
+      body{margin:0;font:12px Arial,Helvetica,sans-serif;color:#111}.page{padding:0 6px}.f{display:inline-block;height:auto;min-height:16px}
+      .t,.p{border:1px solid #888}.t.on,.p.on{background:#111!important;color:#fff;border-color:#111}
+      @page{size:letter;margin:.45in}@media print{.row{margin:5px 0}}</style><div class="page">${clone.innerHTML}</div>`);
+    win.document.close();
+    setTimeout(() => { try { win.focus(); win.print(); } catch (e) {} }, 300);
+  }
+
   // ---------- no page scrollbars when everything fits ----------
   function scrollLock() {
-    const parts = ['MainTable', 'vl-form', 'vl-groups', 'vl-hkwrap', 'vprop-card', 'AgentViewSpan', 'webphoneSpan']
+    const parts = ['MainTable', 'vl-form', 'vl-groups', 'vl-hkwrap', 'vl-pitch', 'vprop-card', 'AgentViewSpan', 'webphoneSpan']
       .map(byId).filter((e) => e && getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).display !== 'none');
     let w = 0, h = 0;
     parts.forEach((e) => { const r = e.getBoundingClientRect(); w = Math.max(w, r.right + window.scrollX); h = Math.max(h, r.bottom + window.scrollY); });
