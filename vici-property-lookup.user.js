@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      8.7
+// @version      8.8
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -561,12 +561,13 @@
     .vp-sec{margin:16px 0 10px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-top:1px solid var(--border);padding-top:14px}
     .vp-card h3 + .vp-sec{border-top:0;padding-top:0;margin-top:4px}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
-    .vp-stage{position:relative;background:#111;border-radius:var(--radius);overflow:hidden;height:420px;display:flex;align-items:center;justify-content:center}
-    .vp-stage img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+    .vp-gal{width:fit-content;max-width:100%}
+    .vp-stage{position:relative;display:block;width:fit-content;max-width:100%;border-radius:var(--radius);overflow:hidden}
+    .vp-stage img{display:block;max-width:100%;max-height:520px;width:auto;height:auto}
     .vp-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;
       background:rgba(255,255,255,.92);color:#111;font:700 26px/1 Arial;box-shadow:0 2px 8px rgba(0,0,0,.3)}
     .vp-nav:hover{background:#fff}.vp-nav.prev{left:12px}.vp-nav.next{right:12px}
-    .vp-thumbs{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 4px;scroll-snap-type:x mandatory}
+    .vp-thumbs{display:flex;gap:8px;overflow-x:auto;width:0;min-width:100%;padding:10px 2px 4px;scroll-snap-type:x mandatory}
     .vp-thumbs button{flex:0 0 auto;padding:0;border:2px solid transparent;border-radius:6px;overflow:hidden;cursor:pointer;background:none;scroll-snap-align:center}
     .vp-thumbs button.on{border-color:var(--accent)}
     .vp-thumbs img{width:96px;height:68px;object-fit:cover;display:block}`;
@@ -620,6 +621,21 @@
         return msg(`Couldn't read this home's details from ${esc(s.label)} right now.`);
     }
   }
+
+  // Zillow and Trulia share the same photo files; Zillow hides old listing photos on off-market homes,
+  // so when one site only has Street View, use the other site's full set.
+  function photosFor(m) {
+    const own = (m && m.photos) || [];
+    const real = (x) => x && x.length && !x.every((p) => /streetview/i.test(p.full));
+    if (real(own)) return { list: own, street: false };
+    const a = getAddress(), c = cache[a.full];
+    for (const k of ['trulia', 'zillow']) {
+      const o = c && siteState(c, k).model;
+      if (o && real(o.photos)) return { list: o.photos, street: false };
+    }
+    return { list: own, street: own.length > 0 };
+  }
+  let galleryPhotos = [];
 
   function modelHTML(a, m, key) {
     const th = THEMES[key];
@@ -695,9 +711,10 @@
 
     const facts = section('Highlights', hlItems) + section('Home details', detItems) + section('Price history', saleItems) + section('Tax history', taxItems);
 
-    const ph = m.photos || [];
+    const pf = photosFor(m), ph = pf.list;
+    galleryPhotos = ph;
     const gallery = ph.length ? `<div class="vp-card vp-gal" style="margin-bottom:14px">
-      <h3>${m.streetViewOnly ? 'Street view' : 'Photos'} <span class="vp-count">${ph.length > 1 ? `<span data-vp-n>1</span> of ${ph.length}` : ''}</span></h3>
+      <h3>${pf.street ? 'Street view' : 'Photos'} <span class="vp-count">${ph.length > 1 ? `<span data-vp-n>1</span> of ${ph.length}` : ''}</span></h3>
       <div class="vp-stage">
         <img data-vp-main src="${esc(ph[0].full)}" alt="${esc(ph[0].caption || 'Photo of ' + (m.street || a.street))}" referrerpolicy="no-referrer">
         ${ph.length > 1 ? '<button type="button" class="vp-nav prev" data-vp-step="-1" aria-label="Previous photo">‹</button><button type="button" class="vp-nav next" data-vp-step="1" aria-label="Next photo">›</button>' : ''}
@@ -838,8 +855,7 @@
     photoIndex = (i + thumbs.length) % thumbs.length;
     const a = getAddress(), c = cache[a.full];
     const st = c && siteState(c, openKey);
-    const model = st && st.model ? st.model : (c && siteState(c, 'zillow').model);
-    const ph = model && model.photos && model.photos[photoIndex];
+    const ph = galleryPhotos[photoIndex];
     if (ph) main.src = ph.full;
     thumbs.forEach((t, k) => t.classList.toggle('on', k === photoIndex));
     thumbs[photoIndex].scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
@@ -865,7 +881,7 @@
     });
     if (!screen || !openKey) return;
     const st = c ? siteState(c, openKey) : {};
-    const key = openKey + '|' + a.full + '|' + st.state + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
+    const key = openKey + '|' + a.full + '|' + st.state + '|' + (c ? SITES.map((x) => siteState(c, x.key).state).join(',') : '') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
     if (key === lastScreenKey) return;
     lastScreenKey = key;
     const th = THEMES[openKey];
