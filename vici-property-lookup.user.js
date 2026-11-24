@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      13.0
+// @version      13.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1467,7 +1467,7 @@ function readHomesPage(doc) {
     // 915-1545 x 67-805 is kept free for the pitch sheet
   };
   const byId = (id) => document.getElementById(id);
-  let laidOut = false, viewsSet = false;
+  let laidOut = false, viewsSet = false, styleSet = false;
 
   function box(id, x, y, extra) {
     let b = byId(id);
@@ -1488,8 +1488,9 @@ function readHomesPage(doc) {
     const main = byId('MainPanel'), form = byId('vicidial_form');
     if (!main || !form || !byId('address1') || !byId('MainPanelCustInfo')) return;
     // pieces Vici moves around on its own are pinned with !important rules
-    if (!byId('vl-style')) {
-      const st = document.createElement('style'); st.id = 'vl-style';
+    if (!styleSet) {   // (re)write our styles once per page load, replacing any older copy
+      styleSet = true;
+      const st = byId('vl-style') || document.createElement('style'); st.id = 'vl-style';
       st.textContent = `
         #DiaLlOgButtonspan{left:${L.manual[0]}px!important;top:${L.manual[1]}px!important}
         #ManuaLDiaLButtons a[onclick*="'FAST'"]{display:none!important}
@@ -1558,6 +1559,11 @@ function readHomesPage(doc) {
         #vl-livebadge.off{background:#e3e6ea;color:#6b7480;border:1px solid #b9c0c8}#vl-livebadge.off i{background:#9aa3ad}
         #vl-livebadge.on{background:#1aa33c;color:#fff}#vl-livebadge.on i{background:#d9ffd9;box-shadow:0 0 0 3px rgba(255,255,255,.35)}
         #vl-livebadge.dead{background:#c4252b;color:#fff}#vl-livebadge.dead i{background:#ffd5d5}
+        .vl-full{left:0!important;top:0!important;width:100vw!important;height:100vh!important;background:#fff;z-index:2147483000!important}
+        .vl-full>table{width:100%!important;height:100%!important}
+        html.vl-takeover #vprop-tabbar,html.vl-takeover #vprop-card,html.vl-takeover #vprop-screen,html.vl-takeover [id^="vl-"]:not(#vl-hidden):not(#vl-style):not(#vl-pitch-style),
+        html.vl-takeover #AgentViewSpan,html.vl-takeover #AgentViewLinkSpan,html.vl-takeover #webphoneSpan,html.vl-takeover #SecondSspan{visibility:hidden!important}
+        html.vl-takeover #vl-pitch{display:none!important}
         #vl-hklist{margin-top:8px;width:166px;box-sizing:border-box;background:#ffeebb;border:1px solid #e3c77a;border-radius:8px;padding:6px 8px;font:12px/1.5 Arial,sans-serif;display:none}
         #vl-hk.on+#vl-hklist{display:block}`;
       document.head.appendChild(st);
@@ -1633,6 +1639,7 @@ function readHomesPage(doc) {
     }
     liveBadge();
     modernButtons();
+    takeover();
     hotKeysSwitch();
     try { pitchSheet(); } catch (e) {}
     scrollLock();
@@ -1704,6 +1711,23 @@ function readHomesPage(doc) {
     if (k === 'manual') return byId('MDstatusSpan') && byId('MDstatusSpan').querySelector('a');
     if (k === 'cb') return byId('CBstatusSpan') && byId('CBstatusSpan').querySelector('a');
     const ls = byId('vl-leadsearch'); return ls && ls.querySelector('a');
+  }
+
+  // ---------- Vici's full-page messages (another session took over, admin kicked you out, logout,
+  // system disabled...) fill the whole window, and everything we added steps out of the way ----------
+  function takeover() {
+    let full = null, top = -1;   // the one on top, if several are open
+    document.querySelectorAll('body > span[id], #vicidial_form > span[id]').forEach((el) => {
+      if (/^vl-|^vprop/.test(el.id)) return;
+      const cs = getComputedStyle(el), z = parseInt(cs.zIndex, 10) || 0;
+      if (cs.visibility !== 'visible' || cs.display === 'none' || z < 40 || z <= top) return;
+      const t = el.querySelector('table'); if (!t) return;
+      const w = parseInt(t.getAttribute('width'), 10) || 0, h = parseInt(t.getAttribute('height'), 10) || 0;
+      if (w >= 1500 && h >= 600 && (el.textContent || '').trim()) { full = el; top = z; }
+    });
+    document.querySelectorAll('.vl-full').forEach((el) => { if (el !== full) el.classList.remove('vl-full'); });
+    if (full) full.classList.add('vl-full');
+    document.documentElement.classList.toggle('vl-takeover', !!full);
   }
 
   // ---------- Live-call light as a badge (Vici's own picture stays, hidden; it tells us the state) ----------
@@ -1835,7 +1859,7 @@ function readHomesPage(doc) {
     const [x, y, w, h] = L.pitch;
     const ps = box('vl-pitch', x, y, `width:${w}px;height:${h}px;z-index:7`);
     if (!ps.childElementCount) {
-      if (!byId('vl-pitch-style')) { const st = document.createElement('style'); st.id = 'vl-pitch-style'; st.textContent = PS_CSS; document.head.appendChild(st); }
+      { const st = byId('vl-pitch-style') || document.createElement('style'); st.id = 'vl-pitch-style'; st.textContent = PS_CSS; document.head.appendChild(st); }
       ps.innerHTML = pitchHTML();
       ps.querySelectorAll('input:not([type=password]),textarea').forEach((i) => i.setAttribute('autocomplete', 'pitch-' + (i.dataset.k || 'x')));
       ps.addEventListener('input', (e) => { const f = e.target.closest('[data-k]'); if (!f) return; f.dataset.touched = '1'; f.classList.remove('auto');
