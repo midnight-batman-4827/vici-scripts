@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.7
+// @version      12.8
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1520,6 +1520,11 @@ function readHomesPage(doc) {
           font:600 14px "Segoe UI",Arial,sans-serif;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:pointer}
         #vl-hk i{width:10px;height:10px;border-radius:50%;background:#9fb7de}
         #vl-hk.on{background:linear-gradient(#2fbf4f,#159a35)} #vl-hk.on i{background:#d9ffd9}
+        #vl-livebadge{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 12px;border-radius:13px;font:700 12px "Segoe UI",Arial;letter-spacing:.04em;white-space:nowrap}
+        #vl-livebadge i{width:9px;height:9px;border-radius:50%}
+        #vl-livebadge.off{background:#e3e6ea;color:#6b7480;border:1px solid #b9c0c8}#vl-livebadge.off i{background:#9aa3ad}
+        #vl-livebadge.on{background:#1aa33c;color:#fff}#vl-livebadge.on i{background:#d9ffd9;box-shadow:0 0 0 3px rgba(255,255,255,.35)}
+        #vl-livebadge.dead{background:#c4252b;color:#fff}#vl-livebadge.dead i{background:#ffd5d5}
         #vl-hklist{margin-top:8px;width:166px;box-sizing:border-box;background:#ffeebb;border:1px solid #e3c77a;border-radius:8px;padding:6px 8px;font:12px/1.5 Arial,sans-serif;display:none}
         #vl-hk.on+#vl-hklist{display:block}`;
       document.head.appendChild(st);
@@ -1606,9 +1611,22 @@ function readHomesPage(doc) {
       if (wp && /View\s*-/.test(wp.textContent)) wp.click();
       if (av && /View\s*\+/.test(av.textContent)) av.click();
     }
+    liveBadge();
     hotKeysSwitch();
     try { pitchSheet(); } catch (e) {}
     scrollLock();
+  }
+
+  // ---------- Live-call light as a badge (Vici's own picture stays, hidden; it tells us the state) ----------
+  function liveBadge() {
+    const img = document.querySelector('img[name="livecall"]'), wrap = byId('vl-live');
+    if (!img || !wrap) return;
+    img.style.visibility = 'hidden'; img.style.position = 'absolute';
+    let b = byId('vl-livebadge');
+    if (!b) { b = document.createElement('span'); b.id = 'vl-livebadge'; b.innerHTML = '<i></i><span></span>'; wrap.appendChild(b); }
+    const src = img.getAttribute('src') || '';
+    const st = /_ON\./i.test(src) ? ['on', 'LIVE CALL'] : /DEAD/i.test(src) ? ['dead', 'CALL HUNG UP'] : ['off', 'NO LIVE CALL'];
+    if (b.className !== st[0]) { b.className = st[0]; b.querySelector('span').textContent = st[1]; }
   }
 
   // ---------- HOT KEYS on/off switch (drives Vici's own hot keys) ----------
