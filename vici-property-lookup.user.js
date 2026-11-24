@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.0
+// @version      10.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -376,7 +376,9 @@
       const i = String(t).indexOf(':');
       return i > 0 ? [t.slice(0, i), t.slice(i + 1).trim()] : ['', t];
     })]).filter(([, rows]) => rows.length);
-    const photos = (o.photos || []).map((ph) => ph && ph.href ? { full: ph.href.replace(/s\.jpg$/, 'od-w1024_h768.jpg'), thumb: ph.href, caption: '' } : null).filter(Boolean);
+    // rdcpix photo links end in a size code (…s.jpg, …rd-w480_h360.jpg); ask for the large one
+    const big = (u) => String(u).replace(/(?:s|[a-z]{1,2}-w\d+_h\d+)\.(jpg|jpeg|webp)(\?.*)?$/i, 'od-w1024_h768.$1');
+    const photos = (o.photos || []).map((ph) => ph && ph.href ? { full: big(ph.href), thumb: ph.href, caption: ph.title || '' } : null).filter(Boolean);
     return {
       photos, streetViewOnly: false,
       status: nice(String(o.status || '').toUpperCase()),
@@ -605,7 +607,7 @@
     table.vp-t2 tr:last-child td{border-bottom:0}
     .vp-pct{font-size:11px;font-weight:600;margin-left:2px}
     .vp-sub{font-size:11px;color:var(--muted);margin-top:2px}
-    .vp-top-row{display:grid;grid-template-columns:fit-content(64%) minmax(300px,1fr);gap:14px;margin-bottom:14px;align-items:stretch}
+    .vp-top-row{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr);gap:14px;margin-bottom:14px;align-items:stretch}
     .vp-top-row .vp-gal{width:auto}
     .vp-side{position:relative;min-height:320px}
     .vp-side-scroll{position:absolute;top:52px;left:18px;right:8px;bottom:12px;overflow-y:auto;overscroll-behavior:contain;padding-right:8px}
@@ -614,8 +616,8 @@
     .vp-side-scroll > .vp-sec:first-child{border-top:0;padding-top:0;margin-top:0}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
     .vp-gal{width:fit-content;max-width:100%}
-    .vp-stage{position:relative;display:block;width:fit-content;max-width:100%;border-radius:var(--radius);overflow:hidden}
-    .vp-stage img{display:block;max-width:100%;max-height:520px;width:auto;height:auto}
+    .vp-stage{position:relative;display:block;width:100%;aspect-ratio:4/3;max-height:520px;border-radius:var(--radius);overflow:hidden;background:var(--tile)}
+    .vp-stage img{display:block;width:100%;height:100%;object-fit:cover}
     .vp-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;
       background:rgba(255,255,255,.92);color:#111;font:700 26px/1 Arial;box-shadow:0 2px 8px rgba(0,0,0,.3)}
     .vp-nav:hover{background:#fff}.vp-nav.prev{left:12px}.vp-nav.next{right:12px}
@@ -678,13 +680,15 @@
   // so when one site only has Street View, use the other site's full set.
   function photosFor(m) {
     const own = (m && m.photos) || [];
-    const real = (x) => x && x.length && !x.every((p) => /streetview/i.test(p.full));
-    if (real(own)) return { list: own, street: false };
+    const real = (x) => (x || []).filter((p) => !/streetview/i.test(p.full));
+    if (real(own).length >= 2) return { list: own, street: false };
     const a = getAddress(), c = cache[a.full];
-    for (const k of ['trulia', 'zillow']) {
+    let best = real(own);
+    for (const k of ['zillow', 'trulia', 'realtor']) {
       const o = c && siteState(c, k).model;
-      if (o && real(o.photos)) return { list: o.photos, street: false };
+      if (o && real(o.photos).length > best.length) best = real(o.photos);
     }
+    if (best.length) return { list: best, street: false };
     return { list: own, street: own.length > 0 };
   }
   let galleryPhotos = [];
@@ -803,7 +807,7 @@
     const gallery = ph.length ? `<div class="vp-card vp-gal">
       <h3>${pf.street ? 'Street view' : 'Photos'} <span class="vp-count">${ph.length > 1 ? `<span data-vp-n>1</span> of ${ph.length}` : ''}</span></h3>
       <div class="vp-stage">
-        <img data-vp-main src="${esc(ph[0].full)}" alt="${esc(ph[0].caption || 'Photo of ' + (m.street || a.street))}" referrerpolicy="no-referrer">
+        <img data-vp-main src="${esc(ph[0].full)}" data-fallback="${esc(ph[0].thumb || '')}" onerror="if(this.dataset.fallback&&this.src!==this.dataset.fallback){this.src=this.dataset.fallback}" alt="${esc(ph[0].caption || 'Photo of ' + (m.street || a.street))}" referrerpolicy="no-referrer">
         ${ph.length > 1 ? '<button type="button" class="vp-nav prev" data-vp-step="-1" aria-label="Previous photo">‹</button><button type="button" class="vp-nav next" data-vp-step="1" aria-label="Next photo">›</button>' : ''}
       </div>
       ${ph.length > 1 ? `<div class="vp-thumbs">${ph.map((x, i) => `<button type="button" data-vp-i="${i}" class="${i ? '' : 'on'}" aria-label="Photo ${i + 1}"><img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>`).join('')}</div>` : ''}
@@ -961,7 +965,7 @@
     const a = getAddress(), c = cache[a.full];
     const st = c && siteState(c, openKey);
     const ph = galleryPhotos[photoIndex];
-    if (ph) main.src = ph.full;
+    if (ph) { main.dataset.fallback = ph.thumb || ''; main.src = ph.full; }
     thumbs.forEach((t, k) => t.classList.toggle('on', k === photoIndex));
     thumbs[photoIndex].scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
     const n = screen.querySelector('[data-vp-n]'); if (n) n.textContent = String(photoIndex + 1);
