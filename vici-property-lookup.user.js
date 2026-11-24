@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.1
+// @version      12.2
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1457,11 +1457,13 @@ function readHomesPage(doc) {
     return LAYOUT_ON;
   }
   const L = {
-    // agentsLink sits just right of the 'WebPhone View' link
-    status: [10, 60], custtime: [5, 90], leadsearch: [150, 95], dialable: [15, 125],
-    dialbtns: [400, 130], callbacks: [570, 130],   // MANUAL DIAL + FAST DIAL, then CALLBACKS
-    pause: [835, 80], buttons: [855, 225], form: [0, 155],
-    card: [15, 515, 715], agentsLink: [1732, 0], hotkeys: [1611, 262]
+    status: [10, 55], custtime: [5, 80], dialable: [10, 105], pause: [10, 135],
+    webform: [10, 160], webform2: [1170, 270], park: [10, 185], transfer: [10, 210], hangup: [10, 235], dtmf: [10, 265],
+    manual: [40, 355], leadsearch: [35, 385], callbacks: [5, 415],
+    form: [170, 114],             // the form's own 14px top padding is drawn by Vici's grey, so 100 + 14
+    card: [15, 465, 890],
+    seconds: [1510, 30], liveLight: [1610, 25], groups: [1765, 5],
+    agentsList: [1720, 45], agentsLink: [1725, 30], hotkeys: [1730, 300]
   };
   const byId = (id) => document.getElementById(id);
   let laidOut = false, viewsSet = false;
@@ -1488,8 +1490,12 @@ function readHomesPage(doc) {
     if (!byId('vl-style')) {
       const st = document.createElement('style'); st.id = 'vl-style';
       st.textContent = `
-        #DiaLlOgButtonspan{left:${L.dialbtns[0]}px!important;top:${L.dialbtns[1]}px!important}
-        #CallbacksButtons{left:var(--vl-cbx,${L.callbacks[0]}px)!important;top:${L.callbacks[1]}px!important}
+        #DiaLlOgButtonspan{left:${L.manual[0]}px!important;top:${L.manual[1]}px!important}
+        #ManuaLDiaLButtons a[onclick*="'FAST'"]{display:none!important}
+        #CallbacksButtons{left:${L.callbacks[0]}px!important;top:${L.callbacks[1]}px!important}
+        #SecondSspan{left:${L.seconds[0]}px!important;top:${L.seconds[1]}px!important}
+        #AgentViewSpan{left:${L.agentsList[0]}px!important;top:${L.agentsList[1]}px!important}
+        #webphoneLinkSpan{visibility:hidden!important}
         #dialableleadsspan{left:${L.dialable[0]}px!important;top:${L.dialable[1]}px!important}
         #AgentViewLinkSpan{left:${L.agentsLink[0]}px!important;top:${L.agentsLink[1]}px!important}
         #AgentViewLinkSpan td{text-align:left!important}
@@ -1506,7 +1512,7 @@ function readHomesPage(doc) {
         #vl-form input[type=text],#vl-form select,#vl-form textarea{width:100%;box-sizing:border-box;min-width:0}
         #vl-form .ttl{font:bold 11px Arial;color:#333;margin:0 0 4px}
         #vl-form #call_notes{height:46px}
-        #vl-buttons{width:150px;text-align:center}
+        .vl-btn{width:154px;text-align:center}
         #vl-pause.vl-empty{visibility:hidden}
         #vl-hk{width:166px;height:38px;border:0;border-radius:9px;background:linear-gradient(#3d78d6,#2a5bb0);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;
           font:600 14px "Segoe UI",Arial,sans-serif;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:pointer}
@@ -1534,17 +1540,21 @@ function readHomesPage(doc) {
       move(ls && ls.closest('font'), box('vl-leadsearch', ...L.leadsearch));
       stash(byId('CusTInfOSpaN'));
       // pause / resume button and the dial-preview pieces that sit with it
-      const pb = box('vl-pause', ...L.pause, 'width:150px;text-align:center');
+      const pb = box('vl-pause', ...L.pause, 'width:154px;text-align:center');
       ['DiaLControl', 'ManualQueueNotice', 'ManualQueueChoice', 'DiaLLeaDPrevieW', 'DiaLDiaLAltPhonE'].forEach((id) => move(byId(id), pb));
       move(byId('NexTCalLPausE') && byId('NexTCalLPausE').closest('font'), pb);
-      // Web form / Park / Transfer / Hangup / Send DTMF column
-      const bb = box('vl-buttons', ...L.buttons);
-      ['WebFormSpan', 'WebFormSpanTwo', 'ParkCounterSpan', 'ParkControl', 'ivrParkControl', 'XferControl', 'ReQueueCall', 'SpacerSpanC', 'HangupControl', 'SpacerSpanD', 'SendDTMFdiv'].forEach((id) => {
-        let el = byId(id); if (!el) return;
-        if (id === 'ParkCounterSpan') el = el.closest('font') || el;
-        move(el, bb);
-        if (!/ivrParkControl|ReQueueCall|SendDTMFdiv/.test(id)) bb.appendChild(document.createElement('br'));
+      // Web form / Park / Transfer / Hangup / Send DTMF: each button is its own box
+      [['webform', ['WebFormSpan']], ['webform2', ['WebFormSpanTwo']], ['park', ['ParkCounterSpan', 'ParkControl', 'ivrParkControl']],
+       ['transfer', ['XferControl', 'ReQueueCall']], ['hangup', ['HangupControl']], ['dtmf', ['SendDTMFdiv']]].forEach(([k, ids]) => {
+        const bx = box('vl-b-' + k, ...L[k]); bx.className = 'vl-btn';
+        ids.forEach((id) => { let el = byId(id); if (!el) return; if (id === 'ParkCounterSpan') el = el.closest('font') || el; move(el, bx); });
       });
+      stash(byId('SpacerSpanC')); stash(byId('SpacerSpanD'));
+      // live-call light and GROUPS / LOGOUT
+      const live = document.querySelector('img[name="livecall"]');
+      move(live, box('vl-live', ...L.liveLight));
+      const grp = [...(byId('Header') || document).querySelectorAll('a')].find((x) => /GROUPS/.test(x.textContent));
+      move(grp && grp.closest('font'), box('vl-groups', ...L.groups, 'white-space:nowrap'));
       // what's left of Vici's left column (recording file / record id / stop recording) is hidden
       const leftTd = byId('RecorDControl') && byId('RecorDControl').closest('td');
       if (leftTd) leftTd.style.visibility = 'hidden';
@@ -1583,9 +1593,6 @@ function readHomesPage(doc) {
       if (clock) clock.style.visibility = 'hidden';
     }
 
-    // CALLBACKS always starts after FAST DIAL, whatever the font width
-    const md = byId('ManuaLDiaLButtons');
-    if (md) { const r = md.getBoundingClientRect(); if (r.width) document.documentElement.style.setProperty('--vl-cbx', Math.max(L.callbacks[0], Math.round(r.right + window.scrollX + 14)) + 'px'); }
     // pause bar only shows when it's a real button (paused / active), not the empty grey bar during calls
     const pb = byId('vl-pause'), dc = byId('DiaLControl');
     if (pb && dc) { const imgs = [...dc.querySelectorAll('img')]; pb.classList.toggle('vl-empty', !imgs.length || imgs.every((i) => /_OFF\.gif|blank/i.test(i.src))); }
@@ -1639,7 +1646,7 @@ function readHomesPage(doc) {
 
   // ---------- no page scrollbars when everything fits ----------
   function scrollLock() {
-    const parts = ['MainTable', 'vl-form', 'vl-buttons', 'vl-hkwrap', 'vprop-card', 'AgentViewSpan', 'webphoneSpan']
+    const parts = ['MainTable', 'vl-form', 'vl-b-webform2', 'vl-groups', 'vl-hkwrap', 'vprop-card', 'AgentViewSpan', 'webphoneSpan']
       .map(byId).filter((e) => e && getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).display !== 'none');
     let w = 0, h = 0;
     parts.forEach((e) => { const r = e.getBoundingClientRect(); w = Math.max(w, r.right + window.scrollX); h = Math.max(h, r.bottom + window.scrollY); });
