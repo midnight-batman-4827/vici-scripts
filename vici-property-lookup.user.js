@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      9.6
+// @version      9.7
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -584,7 +584,7 @@
     .vp-ctabs{display:flex;gap:4px;margin:-4px 0 10px;border-bottom:1px solid var(--border)}
     .vp-ctabs button{border:0;background:none;padding:7px 12px;font:600 13px var(--font);color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
     .vp-ctabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
-    .vp-hist{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;border-top:1px solid var(--border);margin-top:16px}
+    .vp-hist{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px}
     .vp-hist .vp-sec{border-top:0;padding-top:0;margin-top:14px}
     .vp-scroll{max-height:250px;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--border);border-radius:var(--radius)}
     table.vp-t2{width:100%;border-collapse:collapse;font-size:13px}
@@ -593,6 +593,13 @@
     table.vp-t2 tr:last-child td{border-bottom:0}
     .vp-pct{font-size:11px;font-weight:600;margin-left:2px}
     .vp-sub{font-size:11px;color:var(--muted);margin-top:2px}
+    .vp-top-row{display:grid;grid-template-columns:fit-content(64%) minmax(300px,1fr);gap:14px;margin-bottom:14px;align-items:stretch}
+    .vp-top-row .vp-gal{width:auto}
+    .vp-side{position:relative;min-height:320px}
+    .vp-side-scroll{position:absolute;top:52px;left:18px;right:8px;bottom:12px;overflow-y:auto;overscroll-behavior:contain;padding-right:8px}
+    .vp-side .vp-hl.wide{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px 14px}
+    .vp-side .vp-sec{margin-top:12px}
+    .vp-side-scroll > .vp-sec:first-child{border-top:0;padding-top:0;margin-top:0}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
     .vp-gal{width:fit-content;max-width:100%}
     .vp-stage{position:relative;display:block;width:fit-content;max-width:100%;border-radius:var(--radius);overflow:hidden}
@@ -766,11 +773,11 @@
       <div><h4 class="vp-sec">Public tax history</h4>${taxRows ? `<div class="vp-scroll"><table class="vp-t2"><thead><tr><th>Year</th><th>Property taxes</th><th>Tax assessment</th></tr></thead><tbody>${taxRows}</tbody></table></div>` : '<div class="vp-na">No tax history.</div>'}</div>
     </div>` : '';
 
-    const facts = section('Highlights', hlItems) + section('Home details', detItems) + histTables;
+    const facts = section('Highlights', hlItems) + section('Home details', detItems);
 
     const pf = photosFor(m), ph = pf.list;
     galleryPhotos = ph;
-    const gallery = ph.length ? `<div class="vp-card vp-gal" style="margin-bottom:14px">
+    const gallery = ph.length ? `<div class="vp-card vp-gal">
       <h3>${pf.street ? 'Street view' : 'Photos'} <span class="vp-count">${ph.length > 1 ? `<span data-vp-n>1</span> of ${ph.length}` : ''}</span></h3>
       <div class="vp-stage">
         <img data-vp-main src="${esc(ph[0].full)}" alt="${esc(ph[0].caption || 'Photo of ' + (m.street || a.street))}" referrerpolicy="no-referrer">
@@ -779,12 +786,18 @@
       ${ph.length > 1 ? `<div class="vp-thumbs">${ph.map((x, i) => `<button type="button" data-vp-i="${i}" class="${i ? '' : 'on'}" aria-label="Photo ${i + 1}"><img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>`).join('')}</div>` : ''}
     </div>` : '';
 
-    return hero + gallery + `
+    const factsTitle = `Home highlights for ${esc(m.street || a.street)}`;
+    const factsBody = facts || '<div class="vp-na">No home facts listed.</div>';
+    // photos on the left, Home highlights as a vertical panel beside them (same height, scrolls inside)
+    const top = gallery
+      ? `<div class="vp-top-row">${gallery}<div class="vp-card vp-side"><h3>${factsTitle}</h3><div class="vp-side-scroll">${factsBody}</div></div></div>`
+      : `<div class="vp-card" style="margin-bottom:14px"><h3>${factsTitle}</h3>${factsBody}</div>`;
+    return hero + top + `
       <div class="vp-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)">
         <div class="vp-card"><h3>Sale &amp; value</h3>${tiles}${lead}</div>
         <div class="vp-card"><h3>Value over time</h3>${chart}</div>
       </div>
-      <div class="vp-card" style="margin-top:14px"><h3>Home highlights for ${esc(m.street || a.street)}</h3>${facts || '<div class="vp-na">No home facts listed.</div>'}</div>`;
+      ${histTables ? `<div class="vp-card" style="margin-top:14px"><h3>Price &amp; tax history</h3>${histTables}</div>` : ''}`;
   }
 
   // --- the tabs next to SCRIPT 2 ---
