@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      11.8
+// @version      11.9
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1513,14 +1513,20 @@ function readHomesPage(doc) {
     }
     const c0 = () => cache[getAddress().full];
     const anchor = cardAnchor();
-    const panel = anchor && mainPanelOf(anchor);
-    if (!anchor || a.missing.length || openKey) { card.style.display = 'none'; return; }
+    const why = !anchor ? 'no Call Notes box' : a.missing.length ? 'lead missing ' + a.missing.join(', ') : openKey ? 'a property tab is open' : '';
+    card.dataset.why = why;
+    if (why) { card.style.display = 'none'; return; }
     const r = anchor.getBoundingClientRect();
     const left = Math.max(8, r.left - 64), top = r.bottom + 18;
     // only on Vici's main screen: hide when a SCRIPT panel (or anything else) is on top of this spot
     card.style.display = 'none';
-    const hit = document.elementFromPoint(Math.min(left + 40, window.innerWidth - 1), Math.min(top + 20, window.innerHeight - 1));
-    if (top + 20 < window.innerHeight && hit && panel && !panel.contains(hit)) return;
+    // only hide when another Vici panel (SCRIPT, pause/login boxes…) is on top of this spot
+    const hit = top + 20 < window.innerHeight && left + 40 < window.innerWidth ? document.elementFromPoint(left + 40, top + 20) : null;
+    let cover = null;
+    for (let e = hit; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      if (e.id && /panel|box|display|span\d*$/i.test(e.id) && !e.contains(anchor)) { cover = e; break; }
+    }
+    if (cover) { card.dataset.why = 'covered by #' + cover.id; return; }
     card.style.display = '';
     const phone = [...document.querySelectorAll('iframe, #webphone, [id*="webphone" i]')].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 150 && b.left > left + 400).map((b) => b.left);
     const right = Math.min(window.innerWidth - 12, ...(phone.length ? phone.map((x) => x - 16) : [window.innerWidth - 12]));
