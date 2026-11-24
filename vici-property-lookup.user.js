@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      9.1
+// @version      9.2
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -287,6 +287,19 @@
     };
   }
 
+  // County: Trulia's own field when filled, else its county page link ("/Adams-County-08001/"), e.g. "Adams County"
+  function truliaCounty(hd) {
+    const c = hd.location && hd.location.county;
+    if (c) return typeof c === 'string' ? c : (c.name || c.formattedName || '');
+    let found = '';
+    walkAll(hd.secondaryNavigationPDP || {}, (o) => {
+      if (found || Array.isArray(o)) return found ? false : undefined;
+      const m = typeof o.uri === 'string' && o.uri.match(/\/([A-Za-z.\-]+)-County-\d+\//);
+      if (m) { found = m[1].replace(/-/g, ' ') + ' County'; return false; }
+    });
+    return found;
+  }
+
   // Trulia's page keeps everything under props.homeDetails (mapped from a real Trulia page)
   function fromTrulia(hd) {
     const attrs = (list) => (list || []).map((x) => [x.formattedName || '', x.formattedValue || '']).filter(([, v]) => v);
@@ -324,7 +337,7 @@
       lot: (hd.lotSize && hd.lotSize.formattedDimension) || all['lot area'] || '',
       parking: all['parking spaces'] ? all['parking spaces'] + ' spaces' : (all['parking'] || ''),
       hoa: all['hoa fee'] || all['hoa'] || '', rent: hd.estimatedRent && hd.estimatedRent.formattedPrice || '',
-      county: '',
+      county: (hd.location && hd.location.county) ? truliaCounty(hd) : '', countyGuess: truliaCounty(hd),
       groups: groups.filter(([, rows]) => rows.length),
       priceHistory: (hd.priceHistory || []).map((e) => ({ date: e.date, event: words(String(e.event || '')).replace(/\bPrice Change\b/i, 'Price change'), price: pr(e.price), source: e.source && e.source !== 'N/A' ? e.source : '' })),
       taxHistory: (hd.taxes && hd.taxes.history || []).map((t) => ({ year: t.year, tax: pr(t.taxValue), value: pr(t.totalAssessment) })),
@@ -648,6 +661,11 @@
     return { list: own, street: own.length > 0 };
   }
   let galleryPhotos = [];
+  function otherCounty() {
+    const a = getAddress(), c = cache[a.full];
+    for (const k of ['zillow', 'trulia']) { const o = c && siteState(c, k).model; if (o && o.county) return o.county; }
+    return '';
+  }
 
   function modelHTML(a, m, key) {
     const th = THEMES[key];
@@ -703,7 +721,7 @@
     const hlItems = [
       ['home', 'Type', m.type], ['cal', 'Built', m.yearBuilt], ['ruler', 'Size', m.sqft ? num(m.sqft) + ' sqft' : ''],
       ['tag', 'Price / sqft', est && m.sqft ? money(est / m.sqft) : ''], ['bed', 'Beds / baths', isNum(m.beds) && isNum(m.baths) ? `${m.beds} bd / ${m.baths} ba` : ''],
-      ['tree', 'Lot', m.lot], ['car', 'Parking', m.parking], ['people', 'HOA', m.hoa], ['dollar', 'Rent estimate', m.rent], ['pin', 'County', m.county]
+      ['tree', 'Lot', m.lot], ['car', 'Parking', m.parking], ['people', 'HOA', m.hoa], ['dollar', 'Rent estimate', m.rent], ['pin', 'County', m.county || otherCounty() || m.countyGuess]
     ].filter(([, , v]) => v).map(([ic, k, v]) => item(ic, k, v));
 
     const GROUP_ICON = { 'Interior': 'bed', 'Heating & Cooling': 'home', 'Exterior': 'tree', 'Parking & Garage': 'car',
