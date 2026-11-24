@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.4
+// @version      10.5
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -64,6 +64,13 @@ function readHomesPage(doc) {
 
   doc.querySelectorAll('table.price-table tbody tr').forEach((tr) => {
     out.priceHistory.push({ date: txt(tr.querySelector('.long-date')) || txt(tr.querySelector('th')), event: txt(tr.querySelector('.price-event')), price: money(txt(tr.querySelector('.price-price'))) });
+  });
+  // Ownership History: date range, name (blank when Homes.com hides it behind sign-in), owned for, owner type
+  out.ownership = [];
+  doc.querySelectorAll('.ownership-history-container .accordion-button').forEach((row) => {
+    const c = [...row.querySelectorAll('.accordion-item')];
+    if (c.length < 3) return;
+    out.ownership.push({ dates: txt(c[0]), name: c[1].querySelector('.sign-in-pill') ? '' : txt(c[1]), ownedFor: txt(c[2]), type: txt(c[3]) });
   });
   doc.querySelectorAll('table.tax-table tbody tr').forEach((tr) => {
     out.taxHistory.push({ year: txt(tr.querySelector('.tax-year')), tax: money(txt(tr.querySelector('.tax-amount'))), value: money(txt(tr.querySelector('.tax-assessment'))) });
@@ -581,6 +588,7 @@ function readHomesPage(doc) {
       groups,
       priceHistory: (d.priceHistory || []).map((e) => ({ date: e.date, event: e.event, price: e.price })),
       taxHistory: (d.taxHistory || []).map((t) => ({ year: t.year, tax: t.tax, value: t.value })),
+      ownership: d.ownership || [],
       street: d.street || '', city: d.city || ''
     };
   }
@@ -783,6 +791,8 @@ function readHomesPage(doc) {
     .vp-side-scroll > .vp-sec:first-child{border-top:0;padding-top:0;margin-top:0}
     .vp-owned{font-size:12px;font-weight:600;color:var(--muted);margin-top:3px}
     .vp-owned.short{color:#b45309}
+    .vp-own{max-height:220px}
+    .vp-own table.vp-t2 th, .vp-own table.vp-t2 td{padding:6px 8px;font-size:12px}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
     .vp-gal{width:fit-content;max-width:100%}
     .vp-stage{position:relative;display:block;width:100%;aspect-ratio:4/3;max-height:520px;border-radius:var(--radius);overflow:hidden;background:var(--tile)}
@@ -980,6 +990,8 @@ function readHomesPage(doc) {
     </div>` : '';
 
     const facts = section('Highlights', hlItems) + section('Home details', detItems);
+    const own = (m.ownership || []).map((o) => `<tr><td>${esc(o.dates)}</td><td>${o.name ? esc(o.name) : '<span class="vp-sub">—</span>'}</td><td>${esc(o.ownedFor)}</td><td>${esc(o.type)}</td></tr>`).join('');
+    const ownership = own ? `<h4 class="vp-sec">Ownership history</h4><div class="vp-scroll vp-own"><table class="vp-t2"><thead><tr><th>Date</th><th>Name</th><th>Owned for</th><th>Owner type</th></tr></thead><tbody>${own}</tbody></table></div>` : '';
 
     const pf = photosFor(m), ph = pf.list;
     galleryPhotos = ph;
@@ -993,7 +1005,7 @@ function readHomesPage(doc) {
     </div>` : '';
 
     const factsTitle = `Home highlights for ${esc(m.street || a.street)}`;
-    const factsBody = facts || '<div class="vp-na">No home facts listed.</div>';
+    const factsBody = (facts + ownership) || '<div class="vp-na">No home facts listed.</div>';
     // photos on the left, Home highlights as a vertical panel beside them (same height, scrolls inside)
     const top = gallery
       ? `<div class="vp-top-row">${gallery}<div class="vp-card vp-side"><h3>${factsTitle}</h3><div class="vp-side-scroll">${factsBody}</div></div></div>`
