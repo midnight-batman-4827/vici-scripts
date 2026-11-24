@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      8.1
+// @version      8.3
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -214,6 +214,31 @@
     return score >= 2 ? best : null;
   }
 
+  // ---------- Zillow value history (the "Zestimate history" chart is loaded separately) ----------
+  const CHART_QUERY = `query HomeValueChartDataQuery($zpid: ID!, $metricType: HomeValueChartMetricType, $timePeriod: HomeValueChartTimePeriod) {
+    property(zpid: $zpid) { homeValueChartData(metricType: $metricType, timePeriod: $timePeriod) { points { x y } name } } }`;
+  function fetchZillowHistory(zpid) {
+    return new Promise((resolve) => {
+      GM_xmlhttpRequest({
+        method: 'POST', timeout: 15000,
+        url: `https://www.zillow.com/graphql/?zpid=${zpid}&timePeriod=TEN_YEARS&metricType=LOCAL_HOME_VALUES&forecast=true&operationName=HomeValueChartDataQuery`,
+        headers: { 'Content-Type': 'application/json', Accept: '*/*' },
+        data: JSON.stringify({ query: CHART_QUERY, operationName: 'HomeValueChartDataQuery',
+          variables: { zpid: Number(zpid), timePeriod: 'TEN_YEARS', metricType: 'LOCAL_HOME_VALUES', forecast: true } }),
+        onload: (r) => {
+          try {
+            const series = JSON.parse(r.responseText).data.property.homeValueChartData || [];
+            const home = series.find((x) => /this home/i.test(x.name || '')) || series[0];
+            const now = Date.now() + 864e5;
+            const pts = (home && home.points || []).filter((q) => q.x <= now && isNum(q.y)).map((q) => ({ t: q.x, v: q.y })).sort((a, b) => a.t - b.t);
+            resolve(pts.length > 1 ? pts : null);
+          } catch (e) { resolve(null); }
+        },
+        onerror: () => resolve(null), ontimeout: () => resolve(null)
+      });
+    });
+  }
+
   // ---------- Realtor.com page -> property record ----------
   function findRealtor(data) {
     let best = null;
@@ -242,9 +267,17 @@
     const groups = GROUPS.map(([g, keys]) => [g, keys.map((k) => [words(k), show(rf[k])]).filter(([, v]) => v && v !== '0' && v !== 'No')]);
     const glance = (rf.atAGlanceFacts || []).filter((f) => f && f.factValue).map((f) => [f.factLabel, f.factValue]);
     if (glance.length) groups.unshift(['At a glance', glance]);
+    // listing photos (or Zillow's Street View picture for homes with none)
+    const pick = (srcs, want) => (srcs || []).slice().sort((a, b) => Math.abs((a.width || 0) - want) - Math.abs((b.width || 0) - want))[0];
+    const photos = (p.originalPhotos || p.responsivePhotos || []).map((ph) => {
+      const j = (ph.mixedSources && ph.mixedSources.jpeg) || [];
+      const full = pick(j, 1152) || { url: ph.url }, thumb = pick(j, 192) || full;
+      return full && full.url ? { full: full.url, thumb: thumb.url, caption: ph.caption || '' } : null;
+    }).filter(Boolean);
     return {
+      photos, streetViewOnly: photos.length > 0 && photos.every((x) => /streetview/i.test(x.full)),
       status: nice(p.homeStatus),
-      soldDate: sale ? sale.date : p.dateSold, soldPrice: sale ? sale.price : p.lastSoldPrice,
+      soldDate: sale ? (sale.date || sale.time) : p.dateSold, soldPrice: sale ? sale.price : p.lastSoldPrice,
       estimate: estimate || (history && history.length ? history[history.length - 1].v : null),
       listPrice: p.homeStatus === 'FOR_SALE' ? p.price : null,
       history,
@@ -256,7 +289,7 @@
       rent: p.rentZestimate ? money(p.rentZestimate) + '/mo' : '',
       county: p.county || '',
       groups,
-      priceHistory: ph.map((e) => ({ date: e.date, event: e.event, price: e.price })),
+      priceHistory: ph.map((e) => ({ date: e.date || e.time, event: e.event, price: e.price })),
       taxHistory: (p.taxHistory || []).map((t) => ({ year: t.time ? new Date(t.time).getUTCFullYear() : '', tax: t.taxPaid, value: t.value })),
       market: findMarket(datas),
       street: p.streetAddress || (p.address && p.address.streetAddress) || '',
@@ -280,7 +313,9 @@
       const i = String(t).indexOf(':');
       return i > 0 ? [t.slice(0, i), t.slice(i + 1).trim()] : ['', t];
     })]).filter(([, rows]) => rows.length);
+    const photos = (o.photos || []).map((ph) => ph && ph.href ? { full: ph.href.replace(/s\.jpg$/, 'od-w1024_h768.jpg'), thumb: ph.href, caption: '' } : null).filter(Boolean);
     return {
+      photos, streetViewOnly: false,
       status: nice(String(o.status || '').toUpperCase()),
       soldDate: sale ? sale.date : o.last_sold_date, soldPrice: sale ? sale.price : o.last_sold_price,
       estimate, listPrice: /for_sale/i.test(o.status || '') ? o.list_price : null, history,
@@ -321,7 +356,10 @@
     else { const p = findProperty(data, c.zillow.zpid); if (p) model = fromZillow(p, [data]); }
     if (!model) return done({ state: key === 'trulia' ? 'shared' : 'error', raw: data });
 
-    // Trulia and Zillow share records: fill any gap from the other one
+    if ((key === 'zillow' || key === 'trulia') && (!model.history || model.history.length < 2)) {
+      c.zHistory = c.zHistory || fetchZillowHistory(c.zillow.zpid);
+      model.history = await c.zHistory;
+    }
     done({ state: 'ok', model, raw: data });
   }
 
@@ -337,7 +375,13 @@
   const kMoney = (n) => !isNum(n) ? '' : Math.abs(n) >= 1e6 ? '$' + (n / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n);
   const num = (n) => isNum(n) ? Number(n).toLocaleString() : '';
   const day = (t) => { if (!t) return ''; const d = new Date(typeof t === 'number' ? t : String(t).replace(/-/g, '/')); return isNaN(d) ? String(t) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
-  const parseMoney = (s) => { const n = parseFloat(String(s || '').replace(/[^0-9.]/g, '')); return isNaN(n) ? null : n; };
+  // "$500,000 - $749,999" -> { lo: 500000, hi: 749999 };  "$365,650.00" -> { lo: 365650, hi: 365650 }
+  const parseRange = (s) => {
+    const nums = (String(s || '').match(/\d[\d,]*(\.\d+)?/g) || []).map((x) => parseFloat(x.replace(/,/g, ''))).filter((n) => n > 0);
+    if (!nums.length) return null;
+    return { lo: Math.min(nums[0], nums[1] || nums[0]), hi: Math.max(nums[0], nums[1] || nums[0]) };
+  };
+  const parseMoney = (s) => { const r = parseRange(s); return r ? r.lo : null; };
   const esc = (s) => String(s === undefined || s === null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const words = (k) => String(k).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase());
   const show = (v) => Array.isArray(v) ? v.filter((x) => x !== null && typeof x !== 'object').join(', ')
@@ -472,7 +516,17 @@
     .vp-banner{background:var(--tile);border:1px solid var(--border);border-left:0;border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;
       display:flex;gap:14px;align-items:center;font-size:13px}
     .vp-banner b{color:var(--accent)}
-    .vp-note{font-size:12px;color:var(--muted);margin:0 0 12px}`;
+    .vp-note{font-size:12px;color:var(--muted);margin:0 0 12px}
+    .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
+    .vp-stage{position:relative;background:#111;border-radius:var(--radius);overflow:hidden;height:420px;display:flex;align-items:center;justify-content:center}
+    .vp-stage img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+    .vp-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;
+      background:rgba(255,255,255,.92);color:#111;font:700 26px/1 Arial;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+    .vp-nav:hover{background:#fff}.vp-nav.prev{left:12px}.vp-nav.next{right:12px}
+    .vp-thumbs{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 4px;scroll-snap-type:x mandatory}
+    .vp-thumbs button{flex:0 0 auto;padding:0;border:2px solid transparent;border-radius:6px;overflow:hidden;cursor:pointer;background:none;scroll-snap-align:center}
+    .vp-thumbs button.on{border-color:var(--accent)}
+    .vp-thumbs img{width:96px;height:68px;object-fit:cover;display:block}`;
   document.head.appendChild(css);
 
   // --- one site's screen ---
@@ -543,11 +597,19 @@
         <div class="vp-tile"><div class="k">Bought for</div><div class="v">${esc(money(m.soldPrice) || '—')}</div></div>
       </div>`;
 
-    const loan = parseMoney(byLabel(/^Loan\s*Amount/i)), leadVal = parseMoney(byLabel(/^Value\s*:?$/i));
-    const lead = (loan || leadVal) && est ? `<div class="vp-lead">
+    const loan = parseMoney(byLabel(/^Loan\s*Amount/i)), lv = parseRange(byLabel(/^Value\s*:?$/i));
+    let leadHTML = '';
+    if (lv && est) {
+      const shown = lv.lo === lv.hi ? money(lv.lo) : `${money(lv.lo)} – ${money(lv.hi)}`;
+      const cmp = est < lv.lo ? `<span class="down">estimate is ${kMoney(lv.lo - est)} below ${lv.lo === lv.hi ? 'it' : 'this range'}</span>`
+        : est > lv.hi ? `<span class="up">estimate is ${kMoney(est - lv.hi)} above ${lv.lo === lv.hi ? 'it' : 'this range'}</span>`
+        : `<span class="up">estimate is within this range</span>`;
+      leadHTML = `<div>Lead value <b>${shown}</b> (${cmp})</div>`;
+    }
+    const lead = (loan || lv) && est ? `<div class="vp-lead">
       <div class="k">This lead vs. estimate</div>
-      ${loan ? `<div>Loan amt <b>${money(loan)}</b></div><div>LTV <b>${(loan / est * 100).toFixed(1)}%</b></div><div>Equity est. <b>${kMoney(est - loan)}</b></div>` : ''}
-      ${leadVal ? `<div>Lead value <b>${money(leadVal)}</b> <span class="${leadVal >= est ? 'up' : 'down'}">(${leadVal >= est ? '+' : '−'}${kMoney(Math.abs(leadVal - est))} vs est.)</span></div>` : ''}
+      ${loan ? `<div>Loan amt <b>${money(loan)}</b></div><div>LTV <b>${(loan / est * 100).toFixed(1)}%</b></div><div>Equity est. <b>${est - loan < 0 ? '−' : ''}${kMoney(Math.abs(est - loan))}</b></div>` : ''}
+      ${leadHTML}
     </div>` : '';
 
     const chart = m.history && m.history.length > 1 ? chartSVG(m.history, Math.max(420, Math.round(((screen && screen.clientWidth) || 1400) - 58) * 1.15 / 2.15 - 38), 260, th.chart, 'Home value estimate over time')
@@ -576,7 +638,17 @@
       mkt = `<div class="vp-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">${items}</div>`;
     }
 
-    return hero + `
+    const ph = m.photos || [];
+    const gallery = ph.length ? `<div class="vp-card vp-gal" style="margin-bottom:14px">
+      <h3>${m.streetViewOnly ? 'Street view' : 'Photos'} <span class="vp-count">${ph.length > 1 ? `<span data-vp-n>1</span> of ${ph.length}` : ''}</span></h3>
+      <div class="vp-stage">
+        <img data-vp-main src="${esc(ph[0].full)}" alt="${esc(ph[0].caption || 'Photo of ' + (m.street || a.street))}" referrerpolicy="no-referrer">
+        ${ph.length > 1 ? '<button type="button" class="vp-nav prev" data-vp-step="-1" aria-label="Previous photo">‹</button><button type="button" class="vp-nav next" data-vp-step="1" aria-label="Next photo">›</button>' : ''}
+      </div>
+      ${ph.length > 1 ? `<div class="vp-thumbs">${ph.map((x, i) => `<button type="button" data-vp-i="${i}" class="${i ? '' : 'on'}" aria-label="Photo ${i + 1}"><img src="${esc(x.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></button>`).join('')}</div>` : ''}
+    </div>` : '';
+
+    return hero + gallery + `
       <div class="vp-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)">
         <div class="vp-card"><h3>Sale &amp; value</h3>${tiles}${lead}</div>
         <div class="vp-card"><h3>Value over time</h3>${chart}</div>
@@ -689,6 +761,15 @@
     if (!screen) {
       screen = document.createElement('div');
       screen.id = 'vprop-screen';
+      screen.addEventListener('click', (e) => {
+        const step = e.target.closest('[data-vp-step]'), th = e.target.closest('[data-vp-i]');
+        if (step || th) showPhoto(step ? photoIndex + Number(step.dataset.vpStep) : Number(th.dataset.vpI));
+      });
+      screen.tabIndex = -1;
+      screen.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight') showPhoto(photoIndex + 1);
+        if (e.key === 'ArrowLeft') showPhoto(photoIndex - 1);
+      });
       document.body.appendChild(screen);
     }
     openKey = key;
@@ -700,6 +781,22 @@
     lastScreenKey = '';
     renderAll();
   }
+  let photoIndex = 0;
+  function showPhoto(i) {
+    const thumbs = screen.querySelectorAll('[data-vp-i]');
+    const main = screen.querySelector('[data-vp-main]');
+    if (!main || !thumbs.length) return;
+    photoIndex = (i + thumbs.length) % thumbs.length;
+    const a = getAddress(), c = cache[a.full];
+    const st = c && siteState(c, openKey);
+    const model = st && st.model ? st.model : (c && siteState(c, 'zillow').model);
+    const ph = model && model.photos && model.photos[photoIndex];
+    if (ph) main.src = ph.full;
+    thumbs.forEach((t, k) => t.classList.toggle('on', k === photoIndex));
+    thumbs[photoIndex].scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+    const n = screen.querySelector('[data-vp-n]'); if (n) n.textContent = String(photoIndex + 1);
+  }
+
   function closeScreen() {
     openKey = null;
     if (screen) screen.classList.remove('open');
@@ -725,6 +822,7 @@
     const th = THEMES[openKey];
     Object.keys(th).forEach((k) => { if (typeof th[k] === 'string' && !/Url|heading/.test(k)) screen.style.setProperty('--' + k, th[k]); });
     screen.innerHTML = screenHTML(a, c, openKey);
+    photoIndex = 0;
   }
 
   // =====================================================================
