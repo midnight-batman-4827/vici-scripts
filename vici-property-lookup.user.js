@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.9
+// @version      11.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -139,10 +139,29 @@ function readHomesPage(doc) {
       // match on house number + city ("8615 West 81 st Street" vs "8615 W 81st St" both start 8615)
       const num = (norm(job.street).match(/^\d+[a-z]?/) || [''])[0];
       const city = norm(job.city);
-      const btn = await waitFor(() => [...document.querySelectorAll('button.suggestion-btn')].find((b) => {
-        const t = norm(b.textContent);
-        return /address/.test(t) && t.startsWith(num + ' ') && (!city || t.includes(city));
-      }), 20000);
+      // join the suggestion's pieces ("104 Holland Trl" + "Pelham, AL 35124" + "Address") so words don't run together
+      const btnText = (b) => {
+        const parts = [...b.querySelectorAll('*')].filter((e) => !e.children.length).map((e) => e.textContent.trim()).filter(Boolean);
+        return (parts.length ? parts.join(', ') : String(b.textContent || '')).replace(/\s+/g, ' ');
+      };
+      const addrBtns = () => [...document.querySelectorAll('button.suggestion-btn')].filter((b) => /address/.test(norm(btnText(b))));
+      const label = (b) => btnText(b).replace(/[,\s]*Address[,\s]*$/i, '').replace(/\s+/g, ' ').replace(/^[,\s]+|[,\s]+$/g, '');
+      const isHit = (b) => {
+        const t = norm(btnText(b));
+        if (job.pick) return t.startsWith(norm(job.pick));
+        return t.startsWith(num + ' ') && (!city || t.includes(city));
+      };
+      let btn = await waitFor(() => addrBtns().find(isHit), job.pick ? 20000 : 6000);
+      if (!btn && !job.pick) {
+        // no exact suggestion: let the list finish filling, then offer the ones in the same State + ZIP
+        await waitFor(() => addrBtns().length >= 3 && null, 3000);
+        btn = addrBtns().find(isHit);
+        if (!btn) {
+          const area = new RegExp('\\b' + String(job.state || '').toLowerCase() + ' ' + String(job.zip || '') + '\\b');
+          const near = [...new Set(addrBtns().filter((b) => area.test(norm(btnText(b)))).map(label))].slice(0, 5);
+          return finish({ ok: false, why: 'no exact address match on Homes.com', near });
+        }
+      }
       if (!btn) return finish({ ok: false, why: 'no matching address on Homes.com' });
       btn.click(); // the page navigates to the property; this helper runs again there
     })();
@@ -220,23 +239,65 @@ function readHomesPage(doc) {
   }
   const getJSON = async (url) => { try { return JSON.parse((await gmGet(url)).text); } catch (e) { return null; } };
 
+  // How close a suggestion is to the lead: house number and street count most, city least.
+  // Only used to rank "close matches"; State and ZIP must already agree.
+  function lev(x, y) {
+    if (x === y) return 0;
+    const d = Array.from({ length: x.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= y.length; j++) d[0][j] = j;
+    for (let i = 1; i <= x.length; i++) for (let j = 1; j <= y.length; j++)
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    return d[x.length][y.length];
+  }
+  function closeness(a, line, city) {
+    const n1 = houseNum(a.street), n2 = houseNum(line), w1 = firstWord(a.street), w2 = firstWord(line);
+    let sc = 0;
+    if (n1 && n1 === n2) sc += 4; else if (n1 && n2 && lev(n1, n2) <= 1) sc += 2;
+    if (w1 && w1 === w2) sc += 3; else if (w1 && w2 && lev(w1, w2) <= 2) sc += 2;
+    if (norm(a.city) === norm(city)) sc += 1;
+    return sc;
+  }
+  const sameArea = (a, state, zip) => a.state === String(state || '').toUpperCase() && a.zip === String(zip || '').slice(0, 5);
+  // keep the best few, closest first, one per property
+  function rankNear(a, list) {
+    const seen = new Set();
+    return list.filter((x) => !seen.has(x.id) && seen.add(x.id))
+      .map((x) => Object.assign(x, { score: closeness(a, x.line, x.city) }))
+      .filter((x) => x.score >= 3)
+      .sort((x, y) => y.score - x.score).slice(0, 5);
+  }
+
   // Zillow's own autocomplete -> zpid (Trulia uses the same id)
+  const zItem = (m) => ({ id: m.zpid, zpid: m.zpid, line: `${m.streetNumber} ${m.streetName}`, city: m.city, state: m.state, zip: m.zipCode });
   async function lookupZillow(a) {
-    const j = await getJSON('https://www.zillowstatic.com/autocomplete/v3/suggestions?q=' + encodeURIComponent(a.full));
-    const hit = ((j && j.results) || []).find((r) => r.metaData && r.metaData.zpid &&
-      sameProperty(a, `${r.metaData.streetNumber} ${r.metaData.streetName}`, r.metaData.city, r.metaData.state, r.metaData.zipCode));
-    if (!hit) return null;
-    const m = hit.metaData;
-    return { zpid: m.zpid, line: `${m.streetNumber} ${m.streetName}`, city: m.city, state: m.state, zip: m.zipCode };
+    const near = [];
+    // second search leaves the city out, for leads whose city is the mailing city (e.g. Detroit vs Redford)
+    for (const q of [a.full, `${a.street} ${a.state} ${a.zip}`]) {
+      const j = await getJSON('https://www.zillowstatic.com/autocomplete/v3/suggestions?q=' + encodeURIComponent(q));
+      for (const r of ((j && j.results) || [])) {
+        const m = r.metaData;
+        if (!m || !m.zpid || !m.streetNumber || !sameArea(a, m.state, m.zipCode)) continue;
+        if (sameProperty(a, `${m.streetNumber} ${m.streetName}`, m.city, m.state, m.zipCode)) return zItem(m);
+        near.push(zItem(m));
+      }
+    }
+    return { near: rankNear(a, near) };
   }
 
   // Realtor.com's own autocomplete -> property id
+  const rItem = (r) => ({ id: String(r.mpr_id), line: r.line, city: r.city, state: r.state_code, zip: r.postal_code });
   async function lookupRealtor(a) {
-    const j = await getJSON('https://parser-external.geo.moveaws.com/suggest?client_id=rdc-home&limit=5&area_types=address&input=' +
-      encodeURIComponent(a.full));
-    const hit = ((j && j.autocomplete) || []).find((r) => r.mpr_id && sameProperty(a, r.line, r.city, r.state_code, r.postal_code));
-    if (!hit) return null;
-    return { id: String(hit.mpr_id), line: hit.line, city: hit.city, state: hit.state_code, zip: hit.postal_code };
+    const near = [];
+    for (const q of [a.full, `${a.street} ${a.state} ${a.zip}`]) {
+      const j = await getJSON('https://parser-external.geo.moveaws.com/suggest?client_id=rdc-home&limit=8&area_types=address&input=' +
+        encodeURIComponent(q));
+      for (const r of ((j && j.autocomplete) || [])) {
+        if (!r.mpr_id || !r.line || !sameArea(a, r.state_code, r.postal_code)) continue;
+        if (sameProperty(a, r.line, r.city, r.state_code, r.postal_code)) return rItem(r);
+        near.push(rItem(r));
+      }
+    }
+    return { near: rankNear(a, near) };
   }
 
   const cache = {}; // full address -> { zillow, realtor, done, info }
@@ -244,7 +305,10 @@ function readHomesPage(doc) {
     if (cache[a.full]) return cache[a.full];
     const c = cache[a.full] = { done: false, sites: {} };
     c.promise = Promise.all([lookupZillow(a), lookupRealtor(a)]).then(([z, r]) => {
-      c.zillow = z; c.realtor = r; c.done = true;
+      // an exact hit has an id; otherwise we keep the close matches for the agent to pick from
+      c.zillow = z.zpid ? z : null; c.zNear = z.near || [];
+      c.realtor = r.id ? r : null; c.rNear = r.near || [];
+      c.done = true;
       refresh();
       loadDetails(a, c);
     });
@@ -539,13 +603,14 @@ function readHomesPage(doc) {
     const done = (o) => { c.sites[key] = Object.assign({ url: s.url(a, c) }, o); renderAll(); };
 
     if (key === 'homes') {
-      const r = await homesLookup(a);
+      const r = await homesLookup(a, c.homesPick);
+      if (r && !r.ok && r.near) return done({ state: 'nomatch', near: r.near.map((t) => ({ id: t, line: t, label: t })) });
       if (!r || !r.ok) return done({ state: 'error', code: r ? r.why : 'no answer from the Homes.com tab' });
       c.homesUrl = r.url;
-      return done({ state: 'ok', model: fromHomes(r.data), url: r.url });
+      return done({ state: 'ok', model: fromHomes(r.data), url: r.url, picked: c.homesPick || null });
     }
-    if ((key === 'zillow' || key === 'trulia') && !c.zillow) return done({ state: 'nomatch' });
-    if (key === 'realtor' && !c.realtor) return done({ state: 'nomatch' });
+    if ((key === 'zillow' || key === 'trulia') && !c.zillow) return done({ state: 'nomatch', near: c.zNear || [] });
+    if (key === 'realtor' && !c.realtor) return done({ state: 'nomatch', near: c.rNear || [] });
 
     const r = await gmGet(c.sites[key].url, 'text/html');
     if (r.status === 403 || r.status === 429 || /px-captcha|Access to this page has been denied|press & hold|kasada|captcha/i.test(r.text.slice(0, 8000))) return done({ state: 'blocked', code: r.status });
@@ -562,7 +627,19 @@ function readHomesPage(doc) {
       c.zHistory = c.zHistory || fetchZillowHistory(c.zillow.zpid);
       model.history = await c.zHistory;
     }
-    done({ state: 'ok', model, raw: data });
+    const picked = (key === 'realtor' ? c.realtorPicked : c.zillowPicked) ? (key === 'realtor' ? c.realtor : c.zillow) : null;
+    if (picked) model.street = picked.line; // headings name the home shown, not the lead's typed address
+    done({ state: 'ok', model, raw: data, picked });
+  }
+
+  function pickNear(a, c, key, i) {
+    const st = siteState(c, key), x = st.near && st.near[i];
+    if (!x) return;
+    if (key === 'homes') { c.homesPick = x.line; c.sites.homes = { state: 'idle' }; return loadSite(a, c, 'homes'); }
+    if (key === 'realtor') { c.realtor = x; c.realtorPicked = true; c.sites.realtor = { state: 'idle' }; return loadSite(a, c, 'realtor'); }
+    // Zillow and Trulia share one property id, so a pick on either fills both
+    c.zillow = x; c.zillowPicked = true; c.zHistory = null;
+    ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: 'idle' }; loadSite(a, c, k); });
   }
 
   function loadDetails(a, c) {
@@ -570,10 +647,10 @@ function readHomesPage(doc) {
   }
 
   // Opens homes.com in a background tab, lets the homes.com helper search the address, waits for its answer
-  function homesLookup(a) {
+  function homesLookup(a, pick) {
     return new Promise((resolve) => {
       const id = Date.now();
-      GM_setValue('vpHomesJob', { id, t: id, query: a.full, street: a.street, city: a.city });
+      GM_setValue('vpHomesJob', { id, t: id, query: pick || a.full, street: a.street, city: a.city, state: a.state, zip: a.zip, pick: pick || '' });
       let tab = null, done = false;
       const listener = GM_addValueChangeListener('vpHomesResult', (name, oldV, v) => {
         if (!v || v.id !== id || done) return;
@@ -792,6 +869,11 @@ function readHomesPage(doc) {
       display:flex;gap:14px;align-items:center;font-size:13px}
     .vp-banner b{color:var(--accent)}
     .vp-note{font-size:12px;color:var(--muted);margin:0 0 12px}
+    .vp-near-h{margin:14px 0 8px;font-size:13px;color:var(--muted)}
+    .vp-near{display:flex;flex-direction:column;gap:6px;max-width:560px}
+    .vp-near button{display:flex;align-items:center;gap:10px;text-align:left;font:inherit;font-size:14px;color:var(--ink);background:var(--tile);
+      border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;cursor:pointer}
+    .vp-near button:hover{border-color:var(--accent);color:var(--accent)}
     .vp-hl.wide{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px 18px}
     .vp-sec{margin:16px 0 10px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-top:1px solid var(--border);padding-top:14px}
     .vp-card h3 + .vp-sec{border-top:0;padding-top:0;margin-top:4px}
@@ -848,6 +930,8 @@ function readHomesPage(doc) {
   };
   const icon = (n) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 
+  const nearLabel = (x) => x.label || `${x.line}, ${x.city}, ${x.state} ${String(x.zip || '').slice(0, 5)}`;
+
   function screenHTML(a, c, key) {
     const s = SITES.find((x) => x.key === key);
     const st = c ? siteState(c, key) : { state: 'idle' };
@@ -865,7 +949,7 @@ function readHomesPage(doc) {
       : msg(`${esc(s.label)} couldn't be read automatically (${why}). Use <b>Open on ${esc(s.label)}</b> above.`);
     switch (st.state) {
       case 'idle': case 'loading': return msg('Looking up the property…');
-      case 'ok': return body(modelHTML(a, st.model, key));
+      case 'ok': return body((st.picked ? `<div class="vp-banner">${icon('pin')}<div><b>Showing a close match, not the exact lead address:</b> ${esc(nearLabel(st.picked))}. Confirm the address with the borrower.</div></div>` : '') + modelHTML(a, st.model, key));
       case 'shared':
         return z.state === 'ok' ? body(`<div class="vp-note">Trulia uses the same property records as Zillow.</div>` + modelHTML(a, z.model, key))
           : msg('Couldn\'t read this home\'s details from Trulia right now.');
@@ -873,9 +957,16 @@ function readHomesPage(doc) {
       case 'blocked':
         if (key === 'realtor' || key === 'homes') return fallback('it blocks background lookups');
         return msg(`${esc(s.label)} asked for a bot check. Click <b>Open on ${esc(s.label)}</b>, complete the check once, and the next lead will fill in.`);
-      case 'nomatch':
-        if (key === 'realtor') return fallback('no exact address match');
-        return msg(`${esc(s.label)} has no exact match for this address. Check the spelling, city and ZIP.`);
+      case 'nomatch': {
+        const near = st.near || [];
+        if (!near.length) {
+          if (key === 'realtor') return fallback('no exact address match');
+          return msg(`${esc(s.label)} has no exact match for this address, and no close matches in ${esc(a.state)} ${esc(a.zip)}. Check the spelling, city and ZIP.`);
+        }
+        return msg(`${esc(s.label)} has no exact match for this address.
+          <div class="vp-near-h">Close matches in ${esc(a.state)} ${esc(a.zip)}. Click one to load it:</div>
+          <div class="vp-near">${near.map((x, i) => `<button type="button" data-vp-near="${i}" data-vp-key="${key}">${icon('pin')}<span>${esc(nearLabel(x))}</span></button>`).join('')}</div>`);
+      }
       default:
         if (key === 'realtor' || key === 'homes') return fallback('the page couldn\'t be read');
         return msg(`Couldn't read this home's details from ${esc(s.label)} right now.`);
@@ -1165,6 +1256,12 @@ function readHomesPage(doc) {
       screen = document.createElement('div');
       screen.id = 'vprop-screen';
       screen.addEventListener('click', (e) => {
+        const nb = e.target.closest('[data-vp-near]');
+        if (nb) {
+          const a = getAddress(), c = cache[a.full];
+          if (c) pickNear(a, c, nb.dataset.vpKey, Number(nb.dataset.vpNear));
+          return;
+        }
         const ct = e.target.closest('[data-vp-chart]');
         if (ct) {
           screen.querySelectorAll('[data-vp-chart]').forEach((b) => b.classList.toggle('on', b === ct));
