@@ -1,0 +1,11 @@
+Windows Registry Editor Version 5.00
+
+; Force-installs Mortgageusa Property Lookup in Microsoft Edge and allows the Homes.com pop-up from Vici.
+; 1. Replace EXTENSION_ID below with the 32-letter ID from Partner Center.
+; 2. Double-click this file on each PC and approve (admin login needed), then restart Edge.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist]
+"1"="EXTENSION_ID;https://edge.microsoft.com/extensionwebstorebase/v1/crx"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\PopupsAllowedForUrls]
+"1"="[*.]talkitpro.com"

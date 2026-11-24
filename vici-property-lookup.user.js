@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      11.9
+// @version      12.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -24,6 +24,10 @@
 
 (function () {
   'use strict';
+  // The same code runs as a Tampermonkey script and as the Edge extension. If a PC has both,
+  // the extension wins and the Tampermonkey copy steps aside (the extension marks the page).
+  const IS_EXT = typeof __VP_EXT !== 'undefined';
+  const stepAside = () => !IS_EXT && document.documentElement.hasAttribute('data-vprop-ext');
 
 function readHomesPage(doc) {
   const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
@@ -184,7 +188,7 @@ function readHomesPage(doc) {
     })();
   }
 
-  if (/(^|\.)homes\.com$/.test(location.hostname)) { homesWorker(); return; }
+  if (/(^|\.)homes\.com$/.test(location.hostname)) { setTimeout(() => { if (!stepAside()) homesWorker(); }, IS_EXT ? 0 : 1500); return; }
 
 
   // =====================================================================
@@ -1541,6 +1545,11 @@ function readHomesPage(doc) {
   //  Main loop – Vici fills the fields by script (no input events), so check once a second
   // =====================================================================
   function refresh() {
+    if (stepAside()) { // the Edge extension is running on this page: remove this copy's UI and stop
+      [tabBar, card, screen].forEach((el) => el && el.remove());
+      clearInterval(loop);
+      return;
+    }
     const a = getAddress();
     if (!a.missing.length) lookup(a); // starts the lookups as soon as a lead's address pops up
     renderAll();
@@ -1548,8 +1557,8 @@ function readHomesPage(doc) {
 
 
 
+  const loop = setInterval(refresh, 1000);
   refresh();
-  setInterval(refresh, 1000);
   // zooming (Ctrl + / Ctrl -) fires resize: refit the screen and redraw its charts at the new width
   let resizeT = null, lastW = 0;
   window.addEventListener('resize', () => {
