@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.2
+// @version      12.3
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1458,7 +1458,7 @@ function readHomesPage(doc) {
   }
   const L = {
     status: [10, 55], custtime: [5, 80], dialable: [10, 105], pause: [10, 135],
-    webform: [10, 160], webform2: [1170, 270], park: [10, 185], transfer: [10, 210], hangup: [10, 235], dtmf: [10, 265],
+    webform: [10, 160], park: [10, 185], transfer: [10, 210], hangup: [10, 235], dtmf: [10, 265],
     manual: [40, 355], leadsearch: [35, 385], callbacks: [5, 415],
     form: [170, 114],             // the form's own 14px top padding is drawn by Vici's grey, so 100 + 14
     card: [15, 465, 890],
@@ -1544,12 +1544,12 @@ function readHomesPage(doc) {
       ['DiaLControl', 'ManualQueueNotice', 'ManualQueueChoice', 'DiaLLeaDPrevieW', 'DiaLDiaLAltPhonE'].forEach((id) => move(byId(id), pb));
       move(byId('NexTCalLPausE') && byId('NexTCalLPausE').closest('font'), pb);
       // Web form / Park / Transfer / Hangup / Send DTMF: each button is its own box
-      [['webform', ['WebFormSpan']], ['webform2', ['WebFormSpanTwo']], ['park', ['ParkCounterSpan', 'ParkControl', 'ivrParkControl']],
+      [['webform', ['WebFormSpan']], ['park', ['ParkCounterSpan', 'ParkControl', 'ivrParkControl']],
        ['transfer', ['XferControl', 'ReQueueCall']], ['hangup', ['HangupControl']], ['dtmf', ['SendDTMFdiv']]].forEach(([k, ids]) => {
         const bx = box('vl-b-' + k, ...L[k]); bx.className = 'vl-btn';
         ids.forEach((id) => { let el = byId(id); if (!el) return; if (id === 'ParkCounterSpan') el = el.closest('font') || el; move(el, bx); });
       });
-      stash(byId('SpacerSpanC')); stash(byId('SpacerSpanD'));
+      stash(byId('SpacerSpanC')); stash(byId('SpacerSpanD')); stash(byId('WebFormSpanTwo')); // Web Form 2 hidden
       // live-call light and GROUPS / LOGOUT
       const live = document.querySelector('img[name="livecall"]');
       move(live, box('vl-live', ...L.liveLight));
@@ -1646,7 +1646,7 @@ function readHomesPage(doc) {
 
   // ---------- no page scrollbars when everything fits ----------
   function scrollLock() {
-    const parts = ['MainTable', 'vl-form', 'vl-b-webform2', 'vl-groups', 'vl-hkwrap', 'vprop-card', 'AgentViewSpan', 'webphoneSpan']
+    const parts = ['MainTable', 'vl-form', 'vl-groups', 'vl-hkwrap', 'vprop-card', 'AgentViewSpan', 'webphoneSpan']
       .map(byId).filter((e) => e && getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).display !== 'none');
     let w = 0, h = 0;
     parts.forEach((e) => { const r = e.getBoundingClientRect(); w = Math.max(w, r.right + window.scrollX); h = Math.max(h, r.bottom + window.scrollY); });
