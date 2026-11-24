@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      13.3
+// @version      13.4
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1471,7 +1471,7 @@ function readHomesPage(doc) {
     manual: [40, 305], leadsearch: [35, 335], callbacks: [5, 365]
   };
   const byId = (id) => document.getElementById(id);
-  let laidOut = false, viewsSet = false, styleSet = false;
+  let laidOut = false, viewsSet = false, styleSet = false, viewsTicks = 0, viewsLastClick = -9, viewsGood = 0;
 
   function box(id, x, y, extra) {
     let b = byId(id);
@@ -1560,6 +1560,7 @@ function readHomesPage(doc) {
         #vl-hk.on{background:linear-gradient(#2fbf4f,#159a35)} #vl-hk.on i{background:#d9ffd9}
         #vl-livebadge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font:700 11px "Segoe UI",Arial;letter-spacing:.04em;white-space:nowrap}
         #vl-status{visibility:hidden!important}
+        #AgentViewSpan{overflow:auto!important;scrollbar-width:none!important}#AgentViewSpan::-webkit-scrollbar{display:none}   /* no sliders; wheel still scrolls */
         #vl-groups a[onclick*="OpeNGrouPSelectioN"]{display:none!important}   /* GROUPS hidden, LOGOUT stays */
         #dialableleadsspan,#vl-custtime{font-size:13px!important;line-height:18px}#dialableleadsspan *{font-size:13px!important}
         #vl-livebadge i{width:9px;height:9px;border-radius:50%}
@@ -1637,12 +1638,19 @@ function readHomesPage(doc) {
     }
 
 
-    // once per login: WebPhone panel hidden (it keeps running), Agents View shown
-    if (!viewsSet && byId('webphoneLink') && byId('AgentViewLink')) {
-      viewsSet = true;
+    // after login: WebPhone panel hidden (it keeps running), Agents View shown. Vici can ignore an early
+    // click while it's still loading, so keep checking for the first minute until both have stuck
+    // for a few seconds, then stop (so we never fight an agent who changes them later).
+    if (!viewsSet && byId('webphoneLink') && byId('AgentViewLink') && !document.documentElement.classList.contains('vl-takeover')) {
+      viewsTicks++;
       const wp = byId('webphoneLink').querySelector('a'), av = byId('AgentViewLink').querySelector('a');
-      if (wp && /View\s*-/.test(wp.textContent)) wp.click();
-      if (av && /View\s*\+/.test(av.textContent)) av.click();
+      const wpOpen = !!wp && /View\s*-/.test(wp.textContent), avClosed = !!av && /View\s*\+/.test(av.textContent);
+      if ((wpOpen || avClosed) && viewsTicks - viewsLastClick >= 3) {
+        if (wpOpen) wp.click();
+        if (avClosed) av.click();
+        viewsLastClick = viewsTicks; viewsGood = 0;
+      } else if (!wpOpen && !avClosed) viewsGood++;
+      if (viewsGood >= 5 || viewsTicks > 60) viewsSet = true;
     }
     liveBadge();
     modernButtons();
