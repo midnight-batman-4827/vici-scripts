@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      11.1
+// @version      11.2
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -105,6 +105,23 @@ function readHomesPage(doc) {
     const id = sessionStorage.getItem('vpropJob');
     const job = GM_getValue('vpHomesJob', null);
     if (!id || !job || String(job.id) !== id || Date.now() - job.t > 90000) return; // normal browsing: do nothing
+    // Tell the agent what this window is, so they don't close it mid-lookup
+    const notice = () => {
+      if (document.getElementById('vprop-homes-notice')) return;
+      const n = document.createElement('div');
+      n.id = 'vprop-homes-notice';
+      n.setAttribute('role', 'status');
+      n.innerHTML = `<style>@keyframes vprop-spin{to{transform:rotate(360deg)}}</style>
+        <div style="width:28px;height:28px;border:3px solid #ffd9c7;border-top-color:#f25c05;border-radius:50%;animation:vprop-spin .8s linear infinite;flex:none"></div>
+        <div><div style="font-weight:700;font-size:16px;margin-bottom:2px">Gathering Homes.com info for Vici. Please wait.</div>
+        <div style="font-size:14px">Don't close this window. It closes by itself in a few seconds.</div></div>`;
+      Object.assign(n.style, { position: 'fixed', zIndex: 2147483647, left: '12px', right: '12px', top: '12px', display: 'flex', alignItems: 'center', gap: '14px',
+        padding: '14px 18px', background: '#fff', color: '#222', border: '2px solid #f25c05', borderRadius: '10px', boxShadow: '0 6px 24px rgba(0,0,0,.25)',
+        font: '14px/1.35 Arial, sans-serif', pointerEvents: 'none' });
+      (document.body || document.documentElement).appendChild(n);
+    };
+    notice();
+    if (!document.body) document.addEventListener('DOMContentLoaded', notice);
     const finish = (payload) => {
       GM_setValue('vpHomesResult', Object.assign({ id: job.id }, payload));
       sessionStorage.removeItem('vpropJob');
@@ -904,6 +921,10 @@ function readHomesPage(doc) {
       display:flex;gap:14px;align-items:center;font-size:13px}
     .vp-banner b{color:var(--accent)}
     .vp-note{font-size:12px;color:var(--muted);margin:0 0 12px}
+    .vp-wait{display:flex;align-items:center;gap:14px}
+    .vp-wait-sub{font-size:13px;color:var(--muted);margin-top:4px}
+    .vp-spin{width:26px;height:26px;flex:none;border:3px solid var(--tile);border-top-color:var(--accent);border-radius:50%;animation:vp-spin .8s linear infinite}
+    @keyframes vp-spin{to{transform:rotate(360deg)}}
     .vp-near-h{margin:14px 0 8px;font-size:13px;color:var(--muted)}
     .vp-near{display:flex;flex-direction:column;gap:6px;max-width:560px}
     .vp-near button{display:flex;align-items:center;gap:10px;text-align:left;font:inherit;font-size:14px;color:var(--ink);background:var(--tile);
@@ -983,7 +1004,10 @@ function readHomesPage(doc) {
       : z.state === 'loading' || z.state === 'idle' ? msg('Looking up the property…')
       : msg(`${esc(s.label)} couldn't be read automatically (${why}). Use <b>Open on ${esc(s.label)}</b> above.`);
     switch (st.state) {
-      case 'idle': case 'loading': return msg('Looking up the property…');
+      case 'idle': case 'loading':
+        if (key === 'homes') return msg(`<div class="vp-wait"><span class="vp-spin"></span><div><b>Gathering information from Homes.com. Wait a second.</b>
+          <div class="vp-wait-sub">A small Homes.com window opens to look up the home. <b>Don't close it.</b> It closes by itself when it's done (usually 5 to 15 seconds).</div></div></div>`);
+        return msg('Looking up the property…');
       case 'ok': return body((st.picked ? `<div class="vp-banner">${icon('pin')}<div><b>Showing a close match, not the exact lead address:</b> ${esc(nearLabel(st.picked))}. Confirm the address with the borrower.</div></div>` : '') + modelHTML(a, st.model, key));
       case 'shared':
         return z.state === 'ok' ? body(`<div class="vp-note">Trulia uses the same property records as Zillow.</div>` + modelHTML(a, z.model, key))
