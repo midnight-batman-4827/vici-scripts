@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      9.0
+// @version      9.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -280,8 +280,8 @@
       rent: p.rentZestimate ? money(p.rentZestimate) + '/mo' : '',
       county: p.county || '',
       groups,
-      priceHistory: ph.map((e) => ({ date: e.date || e.time, event: e.event, price: e.price })),
-      taxHistory: (p.taxHistory || []).map((t) => ({ year: t.time ? new Date(t.time).getUTCFullYear() : '', tax: t.taxPaid, value: t.value })),
+      priceHistory: ph.map((e) => ({ date: e.date || e.time, event: e.event, price: e.price, ppsf: e.pricePerSquareFoot, source: e.source || e.attributeSource && e.attributeSource.infoString1, rate: e.priceChangeRate })),
+      taxHistory: (p.taxHistory || []).map((t) => ({ year: t.time ? new Date(t.time).getUTCFullYear() : '', tax: t.taxPaid, value: t.value, taxRate: t.taxIncreaseRate, valueRate: t.valueIncreaseRate })),
       street: p.streetAddress || (p.address && p.address.streetAddress) || '',
       city: (p.address && p.address.city) || p.city || ''
     };
@@ -326,7 +326,7 @@
       hoa: all['hoa fee'] || all['hoa'] || '', rent: hd.estimatedRent && hd.estimatedRent.formattedPrice || '',
       county: '',
       groups: groups.filter(([, rows]) => rows.length),
-      priceHistory: (hd.priceHistory || []).map((e) => ({ date: e.date, event: words(String(e.event || '')).replace(/\bPrice Change\b/i, 'Price change'), price: pr(e.price) })),
+      priceHistory: (hd.priceHistory || []).map((e) => ({ date: e.date, event: words(String(e.event || '')).replace(/\bPrice Change\b/i, 'Price change'), price: pr(e.price), source: e.source && e.source !== 'N/A' ? e.source : '' })),
       taxHistory: (hd.taxes && hd.taxes.history || []).map((t) => ({ year: t.year, tax: pr(t.taxValue), value: pr(t.totalAssessment) })),
       street: (hd.location && (hd.location.streetAddress || hd.location.formattedLocation)) || '', city: (hd.location && hd.location.city) || ''
     };
@@ -563,6 +563,15 @@
     .vp-ctabs{display:flex;gap:4px;margin:-4px 0 10px;border-bottom:1px solid var(--border)}
     .vp-ctabs button{border:0;background:none;padding:7px 12px;font:600 13px var(--font);color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
     .vp-ctabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+    .vp-hist{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;border-top:1px solid var(--border);margin-top:16px}
+    .vp-hist .vp-sec{border-top:0;padding-top:0;margin-top:14px}
+    .vp-scroll{max-height:250px;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--border);border-radius:var(--radius)}
+    table.vp-t2{width:100%;border-collapse:collapse;font-size:13px}
+    table.vp-t2 th{position:sticky;top:0;background:var(--card);text-align:left;font-size:12px;font-weight:700;color:var(--ink);padding:8px 12px;border-bottom:1px solid var(--border)}
+    table.vp-t2 td{padding:7px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+    table.vp-t2 tr:last-child td{border-bottom:0}
+    .vp-pct{font-size:11px;font-weight:600;margin-left:2px}
+    .vp-sub{font-size:11px;color:var(--muted);margin-top:2px}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
     .vp-gal{width:fit-content;max-width:100%}
     .vp-stage{position:relative;display:block;width:fit-content;max-width:100%;border-radius:var(--radius);overflow:hidden}
@@ -715,12 +724,23 @@
       detItems.push(item(GROUP_ICON[g] || groupIcon(g), label, v));
     }));
 
-    const saleItems = m.priceHistory.slice(0, 12).map((e) => item('tag', `${e.event || 'Event'} · ${day(e.date)}`, money(e.price) || '—'));
-    const taxItems = m.taxHistory.slice(0, 12).map((t) => isNum(t.tax)
-      ? item('dollar', `${t.year} property tax`, money(t.tax), t.value ? 'Assessed ' + money(t.value) : '')
-      : item('dollar', `${t.year} tax assessment`, money(t.value) || '—'));
+    // Price history and public tax history as compact tables (like Zillow's), each scrolling in its own box
+    const pctTag = (r) => isNum(r) && r !== 0 ? ` <span class="vp-pct ${r > 0 ? 'up' : 'down'}">${r > 0 ? '+' : '−'}${Math.abs(r * 100).toFixed(1).replace(/\.0$/, '')}%</span>` : '';
+    // fill in tax/assessment % changes when the site doesn't give them (vs. the year before)
+    const taxRows = m.taxHistory.slice().sort((x, y) => (+y.year || 0) - (+x.year || 0)).map((t, i, arr) => {
+      const prev = arr[i + 1];
+      const tr = isNum(t.taxRate) ? t.taxRate : (prev && isNum(t.tax) && isNum(prev.tax) && prev.tax ? (t.tax - prev.tax) / prev.tax : null);
+      const vr = isNum(t.valueRate) ? t.valueRate : (prev && isNum(t.value) && isNum(prev.value) && prev.value ? (t.value - prev.value) / prev.value : null);
+      return `<tr><td>${esc(t.year)}</td><td>${isNum(t.tax) ? money(t.tax) + pctTag(tr) : '--'}</td><td>${isNum(t.value) ? money(t.value) + pctTag(vr) : '--'}</td></tr>`;
+    }).join('');
+    const priceRows = m.priceHistory.map((e) => `<tr><td>${esc(day(e.date))}</td><td>${esc(e.event || '')}</td>
+      <td>${isNum(e.price) ? money(e.price) + pctTag(e.rate) : '--'}${isNum(e.ppsf) ? `<div class="vp-sub">${money(e.ppsf)}/sqft</div>` : ''}${e.source ? `<div class="vp-sub">Source: ${esc(e.source)}</div>` : ''}</td></tr>`).join('');
+    const histTables = (priceRows || taxRows) ? `<div class="vp-hist">
+      <div><h4 class="vp-sec">Price history</h4>${priceRows ? `<div class="vp-scroll"><table class="vp-t2"><thead><tr><th>Date</th><th>Event</th><th>Price</th></tr></thead><tbody>${priceRows}</tbody></table></div>` : '<div class="vp-na">No price history.</div>'}</div>
+      <div><h4 class="vp-sec">Public tax history</h4>${taxRows ? `<div class="vp-scroll"><table class="vp-t2"><thead><tr><th>Year</th><th>Property taxes</th><th>Tax assessment</th></tr></thead><tbody>${taxRows}</tbody></table></div>` : '<div class="vp-na">No tax history.</div>'}</div>
+    </div>` : '';
 
-    const facts = section('Highlights', hlItems) + section('Home details', detItems) + section('Price history', saleItems) + section('Tax history', taxItems);
+    const facts = section('Highlights', hlItems) + section('Home details', detItems) + histTables;
 
     const pf = photosFor(m), ph = pf.list;
     galleryPhotos = ph;
