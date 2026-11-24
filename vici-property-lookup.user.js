@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.3
+// @version      12.4
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1501,6 +1501,7 @@ function readHomesPage(doc) {
         #AgentViewLinkSpan td{text-align:left!important}
         #vl-hkwrap{z-index:30!important}
         #MainCommit,#MaiNfooterspan,#hotkeysdisplay,#HotKeyEntriesBox{visibility:hidden!important}
+        html,body,#Header table,#Tabs table,#Tabs td,#AgentViewSpan,#AgentViewSpan table{background:#ccc!important;background-color:#ccc!important}
         #vl-form{font:13px Arial,Helvetica,sans-serif;width:720px;padding:0 16px;box-sizing:content-box}
         #vl-form .vl-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
         #vl-form fieldset{border:1px solid #a9a9a9;border-radius:6px;margin:0 0 12px;padding:6px 10px 10px;background:#d4d4d4}
