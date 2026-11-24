@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.7
+// @version      10.8
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -64,6 +64,13 @@ function readHomesPage(doc) {
 
   doc.querySelectorAll('table.price-table tbody tr').forEach((tr) => {
     out.priceHistory.push({ date: txt(tr.querySelector('.long-date')) || txt(tr.querySelector('th')), event: txt(tr.querySelector('.price-event')), price: money(txt(tr.querySelector('.price-price'))) });
+  });
+  // Mortgage History: recorded loans (original amounts), Open = still on the home
+  out.mortgages = [];
+  doc.querySelectorAll('table.mortgage-table tbody tr').forEach((tr) => {
+    const b = tr.querySelector('.mortgage-borrower');
+    out.mortgages.push({ date: txt(tr.querySelector('.shorter-date')) || txt(tr.querySelector('th')), status: txt(tr.querySelector('.mortgage-status')),
+      borrower: b && b.querySelector('.sign-in-pill') ? '' : txt(b), amount: money(txt(tr.querySelector('.mortgage-amount'))) });
   });
   // Ownership History: date range, name (blank when Homes.com hides it behind sign-in), owned for, owner type
   out.ownership = [];
@@ -605,7 +612,7 @@ function readHomesPage(doc) {
       groups,
       priceHistory: (d.priceHistory || []).map((e) => ({ date: e.date, event: e.event, price: e.price })),
       taxHistory: (d.taxHistory || []).map((t) => ({ year: t.year, tax: t.tax, value: t.value })),
-      ownership: d.ownership || [],
+      ownership: d.ownership || [], mortgages: d.mortgages || [],
       street: d.street || '', city: d.city || ''
     };
   }
@@ -937,10 +944,15 @@ function readHomesPage(doc) {
         : `<span class="up">estimate is within this range</span>`;
       leadHTML = `<div>Lead value <b>${shown}</b> (${cmp})</div>`;
     }
+    // the open recorded mortgage (Homes.com), from this tab or the Homes.com tab if it has loaded
+    let openLoan = (m.mortgages || []).find((x) => /open/i.test(x.status) && isNum(x.amount));
+    if (!openLoan) { const hm = cache[getAddress().full] && siteState(cache[getAddress().full], 'homes').model; openLoan = hm && (hm.mortgages || []).find((x) => /open/i.test(x.status) && isNum(x.amount)); }
+    const openHTML = openLoan && est ? `<div style="width:100%">Recorded open loan <b>${money(openLoan.amount)}</b> <span class="vp-sub" style="display:inline">(${esc(openLoan.date)}, original amount)</span> · Equity est. <b>${est - openLoan.amount < 0 ? '−' : ''}${kMoney(Math.abs(est - openLoan.amount))}</b> · LTV <b>${(openLoan.amount / est * 100).toFixed(1)}%</b></div>` : '';
     const lead = (loan || lv) && est ? `<div class="vp-lead">
       <div class="k">This lead vs. estimate</div>
       ${loan ? `<div>Loan amt <b>${money(loan)}</b></div><div>LTV <b>${(loan / est * 100).toFixed(1)}%</b></div><div>Equity est. <b>${est - loan < 0 ? '−' : ''}${kMoney(Math.abs(est - loan))}</b></div>` : ''}
       ${leadHTML}
+      ${openHTML}
     </div>` : '';
 
     const chartW = Math.max(420, Math.round(((screen && screen.clientWidth) || 1400) - 58) * 1.15 / 2.15 - 38);
@@ -1010,7 +1022,10 @@ function readHomesPage(doc) {
 
     const facts = section('Highlights', hlItems) + section('Home details', detItems);
     const own = (m.ownership || []).map((o) => `<tr><td>${esc(o.dates)}</td><td>${o.name ? esc(o.name) : '<span class="vp-sub">—</span>'}</td><td>${esc(o.ownedFor)}</td><td>${esc(o.type)}</td></tr>`).join('');
-    const ownership = own ? `<h4 class="vp-sec">Ownership history</h4><div class="vp-scroll vp-own"><table class="vp-t2"><thead><tr><th>Date</th><th>Name</th><th>Owned for</th><th>Owner type</th></tr></thead><tbody>${own}</tbody></table></div>` : '';
+    const ownBlock = own ? `<div><h4 class="vp-sec">Ownership history</h4><div class="vp-scroll vp-own"><table class="vp-t2"><thead><tr><th>Date</th><th>Name</th><th>Owned for</th><th>Owner type</th></tr></thead><tbody>${own}</tbody></table></div></div>` : '';
+    const mort = (m.mortgages || []).map((x) => `<tr><td>${esc(x.date)}</td><td>${/open/i.test(x.status) ? `<b class="up">${esc(x.status)}</b>` : esc(x.status)}</td><td>${x.borrower ? esc(x.borrower) : '<span class="vp-sub">—</span>'}</td><td>${isNum(x.amount) ? money(x.amount) : '--'}</td></tr>`).join('');
+    const mortBlock = mort ? `<div><h4 class="vp-sec">Mortgage history</h4><div class="vp-scroll vp-own"><table class="vp-t2"><thead><tr><th>Date</th><th>Status</th><th>Borrower</th><th>Loan amount</th></tr></thead><tbody>${mort}</tbody></table></div><div class="vp-sub" style="margin-top:4px">Amounts are the original recorded loan amounts, not today's balance.</div></div>` : '';
+    const ownership = (mortBlock || ownBlock) ? `<div class="vp-hist">${mortBlock}${ownBlock}</div>` : '';
 
     const pf = photosFor(m), ph = pf.list;
     galleryPhotos = ph;
@@ -1034,7 +1049,7 @@ function readHomesPage(doc) {
         <div class="vp-card"><h3>Sale &amp; value</h3>${tiles}${lead}</div>
         <div class="vp-card"><h3>Value over time</h3>${chart}</div>
       </div>
-      ${histTables || ownership ? `<div class="vp-card" style="margin-top:14px"><h3>${ownership ? 'Price, tax &amp; ownership history' : 'Price &amp; tax history'}</h3>${histTables}${ownership ? `<div class="vp-own-wrap">${ownership}</div>` : ''}</div>` : ''}`;
+      ${histTables || ownership ? `<div class="vp-card" style="margin-top:14px"><h3>${ownership ? 'Price, tax, mortgage &amp; ownership history' : 'Price &amp; tax history'}</h3>${histTables}${ownership ? `<div class="vp-own-wrap">${ownership}</div>` : ''}</div>` : ''}`;
   }
 
   // --- the tabs next to SCRIPT 2 ---
