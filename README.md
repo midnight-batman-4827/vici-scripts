@@ -40,7 +40,7 @@ Without this, the lookup runs in a background tab instead, which is much slower.
 ## 5. First call
 
 1. Log in to Vici as usual. The tabs appear next to SCRIPT 2 once you're on the agent screen.
-2. The first time a lead loads, Tampermonkey asks to allow connections to **zillow.com**, **zillowstatic.com**, **trulia.com**, **realtor.com** and **moveaws.com**. Click **Always allow domain** for each (it may also ask for **raw.githubusercontent.com**, which is how it checks for updates).
+2. The first time a lead loads, Tampermonkey asks to allow connections to **zillow.com**, **zillowstatic.com**, **trulia.com**, **realtor.com** and **moveaws.com**. Click **Always allow domain** for each.
 3. The first time you open the **Homes.com** tab, Tampermonkey may ask again for **homes.com**. Click **Always allow domain**.
 4. When the Homes.com window pops up with **"Gathering Homes.com info for Vici. Please wait."**, leave it open. It closes by itself in a few seconds.
 
@@ -57,6 +57,4 @@ If a site can't find the lead's exact address, the tab lists close matches in th
 - **Tab says it hit a bot check:** click **Open on Zillow** (or Trulia), complete the check once, and the next lead fills in.
 
 ### Updates
-You don't need to do anything. Tampermonkey installs new versions on its own (about once a day), and they show up the next time Vici loads.
-
-If a dark bar at the top of Vici says **"The property tabs have a new version"** and you want it now, click **Update now**, then click **Update** on the page that opens. Press **F5** on Vici when you're not on a call. Click **✕** to be reminded later.
+Nothing to do. Tampermonkey installs new versions on its own (about once a day), and they show up the next time Vici loads. Agents never need to open Tampermonkey.
