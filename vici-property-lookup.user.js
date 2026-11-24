@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      8.6
+// @version      8.7
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -60,7 +60,10 @@
   // =====================================================================
   const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   const houseNum = (s) => (norm(s).match(/^\d+[a-z]?/) || [''])[0];
-  const firstWord = (s) => norm(s).split(' ')[1] || '';
+  // First real word of the street name, ignoring directions (East = E, North = N, …)
+  // so "21161 East 63rd Drive" matches "21161 E 63rd Dr"
+  const DIRS = /^(n|s|e|w|ne|nw|se|sw|north|south|east|west|northeast|northwest|southeast|southwest)$/;
+  const firstWord = (s) => norm(s).split(' ').slice(1).find((w) => !DIRS.test(w)) || '';
 
   // Street number, first street word, city, state and ZIP must all agree
   function sameProperty(a, line, city, state, zip) {
