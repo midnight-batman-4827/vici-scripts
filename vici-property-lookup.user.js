@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.1
+// @version      10.2
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -746,7 +746,17 @@
     </div>` : '';
 
     const chartW = Math.max(420, Math.round(((screen && screen.clientWidth) || 1400) - 58) * 1.15 / 2.15 - 38);
-    const valueChart = m.history && m.history.length > 1 ? chartSVG(m.history, chartW, 260, th.chart, 'Home value estimate over time')
+    // value history: this site's, else Zillow's/Trulia's for the same home (labeled)
+    let hist = m.history, histFrom = '';
+    if (!hist || hist.length < 2) {
+      const c0 = cache[getAddress().full];
+      for (const k of ['zillow', 'trulia']) {
+        const o = c0 && siteState(c0, k).model;
+        if (k !== key && o && o.history && o.history.length > 1) { hist = o.history; histFrom = SITES.find((x) => x.key === k).label; break; }
+      }
+    }
+    const valueChart = hist && hist.length > 1
+      ? (histFrom ? `<div class="vp-note">${key === 'realtor' ? 'Realtor.com only shows its value history to signed-in users' : 'This site has no value history for this home'}, so this is ${esc(histFrom)}'s history for the same home.</div>` : '') + chartSVG(hist, chartW, 260, th.chart, 'Home value estimate over time')
       : '<div class="vp-na">Value history isn\'t in this site\'s page data for this home.</div>';
     // Tax paid per year (from the tax history), like Zillow's "Tax paid" chart
     const taxPts = m.taxHistory.filter((t) => isNum(t.tax) && isNum(+t.year))
