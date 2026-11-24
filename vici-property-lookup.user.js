@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.4
+// @version      12.5
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1459,11 +1459,12 @@ function readHomesPage(doc) {
   const L = {
     status: [10, 55], custtime: [5, 80], dialable: [10, 105], pause: [10, 135],
     webform: [10, 160], park: [10, 185], transfer: [10, 210], hangup: [10, 235], dtmf: [10, 265],
-    manual: [40, 355], leadsearch: [35, 385], callbacks: [5, 415],
+    manual: [40, 305], leadsearch: [35, 335], callbacks: [5, 365],   // right under SEND DTMF
     form: [170, 114],             // the form's own 14px top padding is drawn by Vici's grey, so 100 + 14
     card: [15, 465, 890],
     seconds: [1510, 30], liveLight: [1610, 25], groups: [1765, 5],
-    agentsList: [1720, 45], agentsLink: [1725, 30], hotkeys: [1730, 300]
+    agentsList: [1720, 45], agentsLink: [1725, 30], hotkeys: [1724, 556]   // under the Other Agents box
+    // 915-1545 x 67-805 is kept free for the pitch sheet
   };
   const byId = (id) => document.getElementById(id);
   let laidOut = false, viewsSet = false;
