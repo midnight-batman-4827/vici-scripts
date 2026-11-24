@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.9
+// @version      13.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1460,10 +1460,10 @@ function readHomesPage(doc) {
     status: [10, 55], custtime: [5, 80], dialable: [10, 105], pause: [10, 135],
     webform: [10, 160], park: [10, 185], transfer: [10, 210], hangup: [10, 235], dtmf: [10, 265],
     manual: [40, 305], leadsearch: [35, 335], callbacks: [5, 365],   // right under SEND DTMF
-    form: [170, 114],             // the form's own 14px top padding is drawn by Vici's grey, so 100 + 14
+    form: [186, 114],
     card: [15, 465, 890],
     seconds: [1510, 30], liveLight: [1610, 25], groups: [1765, 5],
-    agentsList: [1720, 45], agentsLink: [1725, 30], hotkeys: [1724, 556], pitch: [918, 70, 626, 733]   // under the Other Agents box
+    agentsList: [1720, 45], agentsLink: [1742, 30], hotkeys: [1724, 556], pitch: [918, 70, 626, 733]   // under the Other Agents box
     // 915-1545 x 67-805 is kept free for the pitch sheet
   };
   const byId = (id) => document.getElementById(id);
@@ -1499,24 +1499,35 @@ function readHomesPage(doc) {
         #webphoneLinkSpan{visibility:hidden!important}
         #dialableleadsspan{left:${L.dialable[0]}px!important;top:${L.dialable[1]}px!important}
         #AgentViewLinkSpan{left:${L.agentsLink[0]}px!important;top:${L.agentsLink[1]}px!important}
-        #AgentViewLinkSpan td{text-align:left!important}
+        #AgentViewLinkSpan td{text-align:left!important;white-space:nowrap}
         #vl-hkwrap{z-index:30!important}
         #MainCommit,#MaiNfooterspan,#hotkeysdisplay,#HotKeyEntriesBox{visibility:hidden!important}
         html,body,#Header table,#Tabs table,#Tabs td,#AgentViewSpan,#AgentViewSpan table{background:#ccc!important;background-color:#ccc!important}
-        #vl-form{font:13px Arial,Helvetica,sans-serif;width:720px;padding:0 16px;box-sizing:content-box}
-        #vl-form .vl-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        #vl-form fieldset{border:1px solid #a9a9a9;border-radius:6px;margin:0 0 12px;padding:6px 10px 10px;background:#d4d4d4}
-        #vl-form legend{font-weight:bold;font-size:11px;letter-spacing:.04em;color:#333;padding:0 4px}
-        #vl-form .r{display:grid;grid-template-columns:104px 1fr;align-items:center;gap:6px;margin-top:6px}
-        #vl-form .r>label{text-align:right}
-        #vl-form .g{display:grid;gap:8px;align-items:center}
-        #vl-form .m{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px}
-        #vl-form input[type=text],#vl-form select,#vl-form textarea{width:100%;box-sizing:border-box;min-width:0}
-        #vl-form .ttl{font:bold 11px Arial;color:#333;margin:0 0 4px}
-        #vl-form #call_notes{height:46px}
+        #vl-form{width:720px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font:12px "Segoe UI",Arial,sans-serif;color:#1d2530}
+        #vl-form .col{display:flex;flex-direction:column;gap:10px;min-width:0}
+        #vl-form .sec{background:#fff;border:1px solid #dde2e8;border-radius:9px;padding:9px 12px 11px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+        #vl-form .sec.grow{flex:1;display:flex;flex-direction:column}
+        #vl-form h3{margin:0 0 7px;font:700 11px "Segoe UI",Arial;letter-spacing:.06em;color:#4a5563;display:flex;align-items:center;gap:7px}
+        #vl-form h3 svg{width:14px;height:14px;color:#2563eb}
+        #vl-form .g{display:grid;gap:7px 10px}#vl-form .g+.g{margin-top:7px}
+        #vl-form .c2{grid-template-columns:1fr 1fr}#vl-form .c3{grid-template-columns:1fr 1fr 1fr}#vl-form .s3{grid-column:1/-1}
+        #vl-form .fl{display:flex;flex-direction:column;gap:2px;min-width:0}
+        #vl-form .fl>label{font-size:10.5px;color:#5b6675;font-weight:600}
+        #vl-form .slot{display:block;min-width:0}
+        #vl-form input[type=text],#vl-form select,#vl-form textarea{width:100%;box-sizing:border-box;height:24px;border:1px solid #cdd4dd;border-radius:6px;padding:2px 8px;
+          font:13px "Segoe UI",Arial,sans-serif;background:#fff;color:#1d2530;margin:0}
+        #vl-form select{padding:2px 4px;font-size:12px}
+        #vl-form input:focus,#vl-form select:focus,#vl-form textarea:focus{outline:2px solid #2563eb;outline-offset:0;border-color:#2563eb}
+        #vl-form .ro .slot{height:24px;display:flex;align-items:center;font:600 13px "Segoe UI",Arial;white-space:nowrap}
+        #vl-form .notes{flex:1;display:flex}
+        #vl-form #call_notes{height:auto;min-height:60px;flex:1;resize:none;padding:6px 8px}
+        /* one font for the whole screen (property tabs keep each site's own look) */
+        body{font-family:"Segoe UI",Arial,sans-serif!important}
+        body font,body td,body a,body [class*="_text"],body [class*="body_"],body [class*="queue_"],body .log_title,body .cust_form{font-family:inherit!important}
         .vl-btn{width:154px;text-align:center}
         #vl-pause,[id^="vl-b-"],#DiaLlOgButtonspan,#vl-leadsearch,#CallbacksButtons{visibility:hidden!important}
         #vl-col{width:160px;display:flex;flex-direction:column;gap:6px}
+        #vl-col *{box-sizing:border-box}
         #vl-col .mb{display:flex;align-items:center;gap:8px;height:30px;padding:0 11px;border-radius:8px;font:600 12px "Segoe UI",Arial;letter-spacing:.02em;
           border:1px solid transparent;box-shadow:0 1px 2px rgba(0,0,0,.15);cursor:pointer;text-align:left;width:100%;user-select:none}
         #vl-col .mb svg{width:15px;height:15px;flex:none}
@@ -1542,7 +1553,7 @@ function readHomesPage(doc) {
           font:600 14px "Segoe UI",Arial,sans-serif;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:pointer}
         #vl-hk i{width:10px;height:10px;border-radius:50%;background:#9fb7de}
         #vl-hk.on{background:linear-gradient(#2fbf4f,#159a35)} #vl-hk.on i{background:#d9ffd9}
-        #vl-livebadge{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 12px;border-radius:13px;font:700 12px "Segoe UI",Arial;letter-spacing:.04em;white-space:nowrap}
+        #vl-livebadge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font:700 11px "Segoe UI",Arial;letter-spacing:.04em;white-space:nowrap}
         #vl-livebadge i{width:9px;height:9px;border-radius:50%}
         #vl-livebadge.off{background:#e3e6ea;color:#6b7480;border:1px solid #b9c0c8}#vl-livebadge.off i{background:#9aa3ad}
         #vl-livebadge.on{background:#1aa33c;color:#fff}#vl-livebadge.on i{background:#d9ffd9;box-shadow:0 0 0 3px rgba(255,255,255,.35)}
@@ -1590,33 +1601,21 @@ function readHomesPage(doc) {
       // reorganized lead form: Borrower / Property / Loan, then Call Notes (Installments hidden)
       const f = box('vl-form', ...L.form);
       if (!f.childElementCount) {
-        f.innerHTML = `<div class="vl-cols"><div>
-          <fieldset><legend>BORROWER</legend>
-            <div class="r"><label>Name:</label><div class="g" style="grid-template-columns:1.6fr .7fr 1fr" data-s="first_name,middle_initial,last_name"></div></div>
-            <div class="r"><label>Phone:</label><div class="g" style="grid-template-columns:1fr 1fr"><span class="body_text" data-s="phone_numberDISP,phone_number"></span><div class="m"><label>DialCode:</label><span data-s="phone_code"></span></div></div></div>
-            <div class="r"><label>Date of Birth:</label><div class="g" style="grid-template-columns:.75fr 1.4fr"><span class="body_text" data-s="date_of_birthDISP"></span><div class="m"><label>Gender:</label><span data-s="GENDERhideFORie"></span></div></div></div>
-            <div class="r"><label>FICO:</label><div class="g" style="grid-template-columns:1fr 1fr"><span data-s="title"></span><div class="m"><label>SSN:</label><span data-s="alt_phone"></span></div></div></div>
-          </fieldset>
-          <fieldset><legend>PROPERTY</legend>
-            <div class="r"><label>Address1:</label><span data-s="address1"></span></div>
-            <div class="r"><label>City:</label><span data-s="city"></span></div>
-            <div class="r"><label>State:</label><div class="g" style="grid-template-columns:.5fr 1.5fr"><span data-s="state"></span><div class="m"><label>PostCode:</label><span data-s="postal_code"></span></div></div></div>
-          </fieldset></div>
-          <fieldset><legend>LOAN</legend>
-            <div class="r"><label>Loan Amount:</label><span data-s="address2"></span></div>
-            <div class="r"><label>Value:</label><span data-s="province"></span></div>
-            <div class="r"><label>Rate:</label><span data-s="security_phrase"></span></div>
-            <div class="r"><label>Loan Type:</label><span data-s="vendor_lead_code"></span></div>
-            <div class="r"><label>Cash Out:</label><span data-s="address3"></span></div>
-            <div class="r"><label>Revolving Debt:</label><span data-s="email"></span></div>
-          </fieldset></div>
-          <div class="ttl">CALL NOTES</div><span data-s="call_notes"></span>`;
+        const fl = (lab, ids, cls = '') => `<div class="fl ${cls}"><label>${lab}</label><span class="slot" data-s="${ids}"></span></div>`;
+        f.innerHTML = `<div class="col">
+          <div class="sec"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg>PROPERTY</h3><div class="g c3">${fl('Address', 'address1', 's3')}${fl('City', 'city')}${fl('State', 'state')}${fl('ZIP', 'postal_code')}</div></div>
+          <div class="sec"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>BORROWER</h3><div class="g c2">${fl('First name', 'first_name')}${fl('Last name', 'last_name')}</div>
+            <div class="g c3">${fl('Phone', 'phone_numberDISP,phone_number', 'ro')}${fl('Date of birth', 'date_of_birthDISP', 'ro')}${fl('Gender', 'GENDERhideFORie')}</div>
+            <div class="g" style="grid-template-columns:1fr 2fr">${fl('FICO', 'title')}${fl('SSN', 'alt_phone')}</div></div></div>
+          <div class="col">
+          <div class="sec"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M17 7H9.5a2.5 2.5 0 000 5h5a2.5 2.5 0 010 5H6"/></svg>LOAN</h3><div class="g c2">${fl('Loan amount', 'address2')}${fl('Value', 'province')}${fl('Rate', 'security_phrase')}${fl('Loan type', 'vendor_lead_code')}${fl('Cash out', 'address3')}${fl('Revolving debt', 'email')}</div></div>
+          <div class="sec grow"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/></svg>CALL NOTES</h3><span class="slot notes" data-s="call_notes"></span></div></div>`;
         f.querySelectorAll('[data-s]').forEach((slot) => slot.dataset.s.split(',').forEach((id) => move(field(id), slot)));
         // Edge was autofilling these (e.g. the login number into Revolving Debt); a made-up token stops it
         f.querySelectorAll('input[type=text],textarea').forEach((i) => i.setAttribute('autocomplete', 'vici-lead-' + (i.id || 'x')));
         // Name row: First / MI / Last side by side
-        const mi = byId('middle_initial'); if (mi) mi.placeholder = 'MI';
         stash(byId('comments')); stash(byId('viewcommentsdisplay'));
+        stash(byId('middle_initial')); stash(byId('phone_code'));   // MI and Dial code hidden (still in Vici's form)
       }
       byId('MainPanelCustInfo').style.visibility = 'hidden';
       // Date / session ID / Calls in Queue at the top
