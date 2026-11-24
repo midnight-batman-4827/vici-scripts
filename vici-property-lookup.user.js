@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.0
+// @version      12.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -215,6 +215,9 @@ function readHomesPage(doc) {
 
   // Read a lead field by its on-screen label (Loan Amount / Value are relabeled Vici fields)
   function byLabel(re) {
+    // Mortgageusa's Vici keeps Loan Amount in address2 and Value in province
+    const direct = /Loan/.test(re.source) ? 'address2' : /Value/.test(re.source) ? 'province' : '';
+    if (direct && document.getElementById(direct)) return document.getElementById(direct).value;
     for (const td of document.querySelectorAll('td, th, font, span, b')) {
       if (td.closest('#vprop-screen')) continue;
       if (td.children.length > 2 || !re.test((td.textContent || '').trim())) continue;
@@ -896,6 +899,8 @@ function readHomesPage(doc) {
     #vprop-card .vc-site:hover{border-color:#6b7f99}
     #vprop-card .vc-site img{border-radius:3px}
     #vprop-card .vc-grid{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    #vprop-card.vc-narrow .vc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+    #vprop-card.vc-narrow .vc-hero{flex-basis:190px}
     #vprop-card .vc-tile{background:#f8fafc;border:1px solid #edf0f4;border-radius:8px;padding:7px 10px;min-width:0}
     #vprop-card .vc-k{font-size:11px;color:#6b7686;text-transform:uppercase;letter-spacing:.03em}
     #vprop-card .vc-v{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1433,6 +1438,216 @@ function readHomesPage(doc) {
   }
 
 
+
+  // =====================================================================
+  //  Screen layout – rearranges Vici's own pieces (same elements, same ids, still inside
+  //  Vici's form, so everything keeps saving and working). Positions come from the
+  //  layout playground export. To bring a hidden piece back, change its line here.
+  // =====================================================================
+  // Who gets the new layout: Vici user IDs. Empty list = everyone.
+  const LAYOUT_USERS = ['110'];
+  let LAYOUT_ON = false, layoutUserChecked = false;
+  function layoutAllowed() {
+    if (layoutUserChecked) return LAYOUT_ON;
+    const h = document.getElementById('Header');
+    const m = h && (h.textContent || '').match(/Logged in as User\W+([\w.-]+)/i);
+    if (!m) return false;
+    layoutUserChecked = true;
+    LAYOUT_ON = !LAYOUT_USERS.length || LAYOUT_USERS.includes(m[1]);
+    return LAYOUT_ON;
+  }
+  const L = {
+    // agentsLink sits just right of the 'WebPhone View' link
+    status: [10, 60], custtime: [5, 90], leadsearch: [150, 95], dialable: [15, 125],
+    dialbtns: [400, 130], callbacks: [570, 130],   // MANUAL DIAL + FAST DIAL, then CALLBACKS
+    pause: [835, 80], buttons: [855, 225], form: [0, 155],
+    card: [15, 515, 715], agentsLink: [1732, 0], hotkeys: [1611, 262]
+  };
+  const byId = (id) => document.getElementById(id);
+  let laidOut = false, viewsSet = false;
+
+  function box(id, x, y, extra) {
+    let b = byId(id);
+    if (!b) {
+      b = document.createElement('div');
+      b.id = id;
+      (byId('vicidial_form') || document.body).appendChild(b); // inside Vici's form, so fields still save
+    }
+    b.style.cssText = `position:absolute;left:${x}px;top:${y}px;z-index:6;${extra || ''}`;
+    return b;
+  }
+  const move = (el, into) => { if (el && into && el.parentElement !== into) into.appendChild(el); return el; };
+  // things we hide: kept in the page (Vici's code still uses them), just not shown
+  function stash(el) { if (el) move(el, box('vl-hidden', 0, 0, 'visibility:hidden;width:0;height:0;overflow:hidden')); }
+
+  function applyLayout() {
+    if (!layoutAllowed()) return;
+    const main = byId('MainPanel'), form = byId('vicidial_form');
+    if (!main || !form || !byId('address1') || !byId('MainPanelCustInfo')) return;
+    // pieces Vici moves around on its own are pinned with !important rules
+    if (!byId('vl-style')) {
+      const st = document.createElement('style'); st.id = 'vl-style';
+      st.textContent = `
+        #DiaLlOgButtonspan{left:${L.dialbtns[0]}px!important;top:${L.dialbtns[1]}px!important}
+        #CallbacksButtons{left:var(--vl-cbx,${L.callbacks[0]}px)!important;top:${L.callbacks[1]}px!important}
+        #dialableleadsspan{left:${L.dialable[0]}px!important;top:${L.dialable[1]}px!important}
+        #AgentViewLinkSpan{left:${L.agentsLink[0]}px!important;top:${L.agentsLink[1]}px!important}
+        #AgentViewLinkSpan td{text-align:left!important}
+        #vl-hkwrap{z-index:30!important}
+        #MainCommit,#MaiNfooterspan,#hotkeysdisplay,#HotKeyEntriesBox{visibility:hidden!important}
+        #vl-form{font:13px Arial,Helvetica,sans-serif;width:720px;padding:0 16px;box-sizing:content-box}
+        #vl-form .vl-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        #vl-form fieldset{border:1px solid #a9a9a9;border-radius:6px;margin:0 0 12px;padding:6px 10px 10px;background:#d4d4d4}
+        #vl-form legend{font-weight:bold;font-size:11px;letter-spacing:.04em;color:#333;padding:0 4px}
+        #vl-form .r{display:grid;grid-template-columns:104px 1fr;align-items:center;gap:6px;margin-top:6px}
+        #vl-form .r>label{text-align:right}
+        #vl-form .g{display:grid;gap:8px;align-items:center}
+        #vl-form .m{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px}
+        #vl-form input[type=text],#vl-form select,#vl-form textarea{width:100%;box-sizing:border-box;min-width:0}
+        #vl-form .ttl{font:bold 11px Arial;color:#333;margin:0 0 4px}
+        #vl-form #call_notes{height:46px}
+        #vl-buttons{width:150px;text-align:center}
+        #vl-pause.vl-empty{visibility:hidden}
+        #vl-hk{width:166px;height:38px;border:0;border-radius:9px;background:linear-gradient(#3d78d6,#2a5bb0);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;
+          font:600 14px "Segoe UI",Arial,sans-serif;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:pointer}
+        #vl-hk i{width:10px;height:10px;border-radius:50%;background:#9fb7de}
+        #vl-hk.on{background:linear-gradient(#2fbf4f,#159a35)} #vl-hk.on i{background:#d9ffd9}
+        #vl-hklist{margin-top:8px;width:166px;box-sizing:border-box;background:#ffeebb;border:1px solid #e3c77a;border-radius:8px;padding:6px 8px;font:12px/1.5 Arial,sans-serif;display:none}
+        #vl-hk.on+#vl-hklist{display:block}`;
+      document.head.appendChild(st);
+    }
+
+    if (!laidOut) {
+      laidOut = true;
+      const field = (id) => byId(id);
+      // STATUS line
+      const statusFont = byId('MainStatuSSpan') && byId('MainStatuSSpan').closest('font');
+      move(statusFont, box('vl-status', ...L.status, 'white-space:nowrap'));
+      // Customer Time (Channel hidden)
+      const ct = box('vl-custtime', ...L.custtime, 'white-space:nowrap');
+      ct.className = 'body_text';
+      ct.textContent = 'Customer Time: ';
+      move(byId('custdatetime'), ct);
+      stash(byId('callchannel'));
+      // LEAD SEARCH (the "Customer Information:" label stays hidden)
+      const ls = [...byId('MainPanelCustInfo').querySelectorAll('a')].find((x) => /LEAD SEARCH/i.test(x.textContent));
+      move(ls && ls.closest('font'), box('vl-leadsearch', ...L.leadsearch));
+      stash(byId('CusTInfOSpaN'));
+      // pause / resume button and the dial-preview pieces that sit with it
+      const pb = box('vl-pause', ...L.pause, 'width:150px;text-align:center');
+      ['DiaLControl', 'ManualQueueNotice', 'ManualQueueChoice', 'DiaLLeaDPrevieW', 'DiaLDiaLAltPhonE'].forEach((id) => move(byId(id), pb));
+      move(byId('NexTCalLPausE') && byId('NexTCalLPausE').closest('font'), pb);
+      // Web form / Park / Transfer / Hangup / Send DTMF column
+      const bb = box('vl-buttons', ...L.buttons);
+      ['WebFormSpan', 'WebFormSpanTwo', 'ParkCounterSpan', 'ParkControl', 'ivrParkControl', 'XferControl', 'ReQueueCall', 'SpacerSpanC', 'HangupControl', 'SpacerSpanD', 'SendDTMFdiv'].forEach((id) => {
+        let el = byId(id); if (!el) return;
+        if (id === 'ParkCounterSpan') el = el.closest('font') || el;
+        move(el, bb);
+        if (!/ivrParkControl|ReQueueCall|SendDTMFdiv/.test(id)) bb.appendChild(document.createElement('br'));
+      });
+      // what's left of Vici's left column (recording file / record id / stop recording) is hidden
+      const leftTd = byId('RecorDControl') && byId('RecorDControl').closest('td');
+      if (leftTd) leftTd.style.visibility = 'hidden';
+      // reorganized lead form: Borrower / Property / Loan, then Call Notes (Installments hidden)
+      const f = box('vl-form', ...L.form);
+      if (!f.childElementCount) {
+        f.innerHTML = `<div class="vl-cols"><div>
+          <fieldset><legend>BORROWER</legend>
+            <div class="r"><label>Name:</label><div class="g" style="grid-template-columns:1.6fr .7fr 1fr" data-s="first_name,middle_initial,last_name"></div></div>
+            <div class="r"><label>Phone:</label><div class="g" style="grid-template-columns:1fr 1fr"><span class="body_text" data-s="phone_numberDISP,phone_number"></span><div class="m"><label>DialCode:</label><span data-s="phone_code"></span></div></div></div>
+            <div class="r"><label>Date of Birth:</label><div class="g" style="grid-template-columns:.75fr 1.4fr"><span class="body_text" data-s="date_of_birthDISP"></span><div class="m"><label>Gender:</label><span data-s="GENDERhideFORie"></span></div></div></div>
+            <div class="r"><label>FICO:</label><div class="g" style="grid-template-columns:1fr 1fr"><span data-s="title"></span><div class="m"><label>SSN:</label><span data-s="alt_phone"></span></div></div></div>
+          </fieldset>
+          <fieldset><legend>PROPERTY</legend>
+            <div class="r"><label>Address1:</label><span data-s="address1"></span></div>
+            <div class="r"><label>City:</label><span data-s="city"></span></div>
+            <div class="r"><label>State:</label><div class="g" style="grid-template-columns:.5fr 1.5fr"><span data-s="state"></span><div class="m"><label>PostCode:</label><span data-s="postal_code"></span></div></div></div>
+          </fieldset></div>
+          <fieldset><legend>LOAN</legend>
+            <div class="r"><label>Loan Amount:</label><span data-s="address2"></span></div>
+            <div class="r"><label>Value:</label><span data-s="province"></span></div>
+            <div class="r"><label>Rate:</label><span data-s="security_phrase"></span></div>
+            <div class="r"><label>Loan Type:</label><span data-s="vendor_lead_code"></span></div>
+            <div class="r"><label>Cash Out:</label><span data-s="address3"></span></div>
+            <div class="r"><label>Revolving Debt:</label><span data-s="email"></span></div>
+          </fieldset></div>
+          <div class="ttl">CALL NOTES</div><span data-s="call_notes"></span>`;
+        f.querySelectorAll('[data-s]').forEach((slot) => slot.dataset.s.split(',').forEach((id) => move(field(id), slot)));
+        // Name row: First / MI / Last side by side
+        const mi = byId('middle_initial'); if (mi) mi.placeholder = 'MI';
+        stash(byId('comments')); stash(byId('viewcommentsdisplay'));
+      }
+      byId('MainPanelCustInfo').style.visibility = 'hidden';
+      // Date / session ID / Calls in Queue at the top
+      const clock = byId('status') && byId('status').closest('td');
+      if (clock) clock.style.visibility = 'hidden';
+    }
+
+    // CALLBACKS always starts after FAST DIAL, whatever the font width
+    const md = byId('ManuaLDiaLButtons');
+    if (md) { const r = md.getBoundingClientRect(); if (r.width) document.documentElement.style.setProperty('--vl-cbx', Math.max(L.callbacks[0], Math.round(r.right + window.scrollX + 14)) + 'px'); }
+    // pause bar only shows when it's a real button (paused / active), not the empty grey bar during calls
+    const pb = byId('vl-pause'), dc = byId('DiaLControl');
+    if (pb && dc) { const imgs = [...dc.querySelectorAll('img')]; pb.classList.toggle('vl-empty', !imgs.length || imgs.every((i) => /_OFF\.gif|blank/i.test(i.src))); }
+
+    // once per login: WebPhone panel hidden (it keeps running), Agents View shown
+    if (!viewsSet && byId('webphoneLink') && byId('AgentViewLink')) {
+      viewsSet = true;
+      const wp = byId('webphoneLink').querySelector('a'), av = byId('AgentViewLink').querySelector('a');
+      if (wp && /View\s*-/.test(wp.textContent)) wp.click();
+      if (av && /View\s*\+/.test(av.textContent)) av.click();
+    }
+    hotKeysSwitch();
+    scrollLock();
+  }
+
+  // ---------- HOT KEYS on/off switch (drives Vici's own hot keys) ----------
+  const hkOn = () => { const i = byId('hotkeysdisplay') && byId('hotkeysdisplay').querySelector('img'); return !!i && /ACTIVE/i.test(i.alt || '') && !/INACTIVE/i.test(i.alt || ''); };
+  const hkSet = (on) => {
+    const a = byId('hotkeysdisplay') && byId('hotkeysdisplay').querySelector('a');
+    if (a && on !== hkOn()) a.dispatchEvent(new MouseEvent(on ? 'mouseover' : 'mouseout', { bubbles: true }));
+  };
+  let hkLead = null;
+  function hotKeysSwitch() {
+    if (!byId('hotkeysdisplay')) return;
+    const wrap = box('vl-hkwrap', ...L.hotkeys);
+    if (!byId('vl-hk')) {
+      wrap.innerHTML = '<button type="button" id="vl-hk" title="Click to turn Hot Keys on or off"><i></i><span>HOT KEYS: OFF</span></button><div id="vl-hklist"></div>';
+      byId('vl-hk').addEventListener('click', (e) => { e.preventDefault(); hkSet(!hkOn()); hotKeysSwitch(); });
+    }
+    // a new call starts with Hot Keys off
+    const lead = byId('lead_id') ? byId('lead_id').value : '';
+    if (hkLead !== null && lead !== hkLead && hkOn()) hkSet(false);
+    hkLead = lead;
+    const on = hkOn();
+    byId('vl-hk').classList.toggle('on', on);
+    byId('vl-hk').querySelector('span').textContent = 'HOT KEYS: ' + (on ? 'ON' : 'OFF');
+    if (on) {
+      // Vici's own list is hidden, so read its text (one line per <br>)
+      const lines = ['HotKeyBoxA', 'HotKeyBoxB', 'HotKeyBoxC'].map((id) => byId(id) ? byId(id).innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ') : '')
+        .join('\n').split('\n').map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+      byId('vl-hklist').textContent = lines;
+      byId('vl-hklist').style.whiteSpace = 'pre-line';
+    }
+  }
+  // typing a number in a box (Call Notes, Loan Amount…) must never disposition the call
+  window.addEventListener('keypress', (e) => {
+    if (!LAYOUT_ON || !hkOn()) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) && t.type !== 'button') e.stopImmediatePropagation();
+  }, true);
+
+  // ---------- no page scrollbars when everything fits ----------
+  function scrollLock() {
+    const parts = ['MainTable', 'vl-form', 'vl-buttons', 'vl-hkwrap', 'vprop-card', 'AgentViewSpan', 'webphoneSpan']
+      .map(byId).filter((e) => e && getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).display !== 'none');
+    let w = 0, h = 0;
+    parts.forEach((e) => { const r = e.getBoundingClientRect(); w = Math.max(w, r.right + window.scrollX); h = Math.max(h, r.bottom + window.scrollY); });
+    const fits = w && w <= window.innerWidth + 1 && h <= window.innerHeight + 1;
+    const v = fits ? 'hidden' : '';
+    if (document.documentElement.style.overflow !== v) { document.documentElement.style.overflow = v; document.body.style.overflow = v; if (fits) window.scrollTo(0, 0); }
+  }
+
   // =====================================================================
   //  At-a-glance card in the empty grey area under Call Notes on the main screen
   // =====================================================================
@@ -1521,20 +1736,23 @@ function readHomesPage(doc) {
     card.dataset.why = why;
     if (why) { card.style.display = 'none'; return; }
     const r = anchor.getBoundingClientRect();
-    const left = Math.max(8, r.left - 64), top = r.bottom + 18;
+    const fixed = LAYOUT_ON && byId('vl-form');
+    const left = fixed ? L.card[0] - window.scrollX : Math.max(8, r.left - 64), top = fixed ? L.card[1] - window.scrollY : r.bottom + 18;
     // only on Vici's main screen: hide when a SCRIPT panel (or anything else) is on top of this spot
     card.style.display = 'none';
     // only hide when another Vici panel (SCRIPT, pause/login boxes…) is on top of this spot
     const hit = top + 20 < window.innerHeight && left + 40 < window.innerWidth ? document.elementFromPoint(left + 40, top + 20) : null;
     let cover = null;
     for (let e = hit; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
-      if (e.id && /panel|box|display|span\d*$/i.test(e.id) && !e.contains(anchor)) { cover = e; break; }
+      if (e.id && !/^(MainPanel|MainTable|vl-)/.test(e.id) && /panel|box|display|span\d*$/i.test(e.id) && !e.contains(anchor)) { cover = e; break; }
     }
     if (cover) { card.dataset.why = 'covered by #' + cover.id; return; }
     card.style.display = '';
     const phone = [...document.querySelectorAll('iframe, #webphone, [id*="webphone" i]')].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 150 && b.left > left + 400).map((b) => b.left);
     const right = Math.min(window.innerWidth - 12, ...(phone.length ? phone.map((x) => x - 16) : [window.innerWidth - 12]));
-    Object.assign(card.style, { left: left + window.scrollX + 'px', top: top + window.scrollY + 'px', width: Math.max(560, Math.min(1180, right - left)) + 'px' });
+    const cw = fixed ? L.card[2] : Math.max(560, Math.min(1180, right - left));
+    Object.assign(card.style, { left: left + window.scrollX + 'px', top: top + window.scrollY + 'px', width: cw + 'px' });
+    card.classList.toggle('vc-narrow', cw < 1000);
     const key = a.full + '|' + CARD_ORDER.map((k) => siteState(c || {}, k).state + (siteState(c || {}, k).picked ? 'p' : '')).join(',') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
     if (key === lastCardKey) return;
     lastCardKey = key;
@@ -1550,6 +1768,7 @@ function readHomesPage(doc) {
       clearInterval(loop);
       return;
     }
+    try { applyLayout(); } catch (e) { /* never let the layout stop the lookups */ }
     const a = getAddress();
     if (!a.missing.length) lookup(a); // starts the lookups as soon as a lead's address pops up
     renderAll();
