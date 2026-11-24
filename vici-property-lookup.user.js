@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      9.7
+// @version      9.8
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -173,14 +173,25 @@
     walk(root, 0);
   }
 
+  // Zillow's page can hold several copies of the home (a light one and a full one with price/tax history).
+  // Combine them all, richest last, so nothing in the full record is lost.
   function findProperty(data, zpid) {
-    let best = null;
+    const found = [];
     walkAll(data, (o) => {
-      if (best) return false;
       if (!Array.isArray(o) && String(o.zpid) === String(zpid) &&
-        ('homeStatus' in o || 'bedrooms' in o || 'livingArea' in o)) { best = o; return false; }
+        ('homeStatus' in o || 'bedrooms' in o || 'livingArea' in o)) found.push(o);
     });
-    return best;
+    if (!found.length) return null;
+    const filled = (v) => v !== null && v !== undefined && !(Array.isArray(v) && !v.length) && v !== '';
+    found.sort((a, b) => Object.keys(a).length - Object.keys(b).length);
+    const merged = {};
+    found.forEach((o) => Object.keys(o).forEach((k) => {
+      if (!filled(o[k])) return;
+      if (Array.isArray(o[k]) && Array.isArray(merged[k]) && merged[k].length >= o[k].length) return; // keep the longer list
+      if (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k]) && merged[k] && typeof merged[k] === 'object') merged[k] = Object.assign({}, merged[k], o[k]);
+      else merged[k] = o[k];
+    }));
+    return merged;
   }
 
   const toTime = (t) => {
@@ -676,6 +687,13 @@
     return { list: own, street: own.length > 0 };
   }
   let galleryPhotos = [];
+  // price/tax history: use this site's, else the other Zillow-family site's for the same home
+  function historyFor(m, field) {
+    if (m[field] && m[field].length) return m[field];
+    const a = getAddress(), c = cache[a.full];
+    for (const k of ['zillow', 'trulia']) { const o = c && siteState(c, k).model; if (o && o[field] && o[field].length) return o[field]; }
+    return [];
+  }
   function otherCounty() {
     const a = getAddress(), c = cache[a.full];
     for (const k of ['zillow', 'trulia']) { const o = c && siteState(c, k).model; if (o && o.county) return o.county; }
@@ -683,6 +701,7 @@
   }
 
   function modelHTML(a, m, key) {
+    m = Object.assign({}, m, { priceHistory: historyFor(m, 'priceHistory'), taxHistory: historyFor(m, 'taxHistory') });
     const th = THEMES[key];
     const est = m.estimate;
     const sinceBuy = est && m.soldPrice ? { amt: est - m.soldPrice, pct: (est - m.soldPrice) / m.soldPrice * 100 } : null;
