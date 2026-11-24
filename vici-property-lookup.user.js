@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      13.1
+// @version      13.2
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1457,14 +1457,18 @@ function readHomesPage(doc) {
     return LAYOUT_ON;
   }
   const L = {
-    status: [10, 55], custtime: [5, 80], dialable: [10, 105], pause: [10, 135],
-    webform: [10, 160], park: [10, 185], transfer: [10, 210], hangup: [10, 235], dtmf: [10, 265],
-    manual: [40, 305], leadsearch: [35, 335], callbacks: [5, 365],   // right under SEND DTMF
-    form: [186, 114],
-    card: [15, 465, 890],
+    // one grid: 12px left edge, 12px gaps; buttons, form and pitch sheet share a top line,
+    // card + pitch sheet share a bottom line
+    custtime: [12, 52], dialable: [12, 72], status: [12, -100],   // STATUS line hidden
+    pause: [12, 107],                                            // button column top = 100
+    form: [184, 100],
+    card: [12, 424, 892],
+    pitch: [916, 100, 626, 605],
     seconds: [1510, 30], liveLight: [1610, 25], groups: [1765, 5],
-    agentsList: [1720, 45], agentsLink: [1742, 30], hotkeys: [1724, 556], pitch: [918, 70, 626, 733]   // under the Other Agents box
-    // 915-1545 x 67-805 is kept free for the pitch sheet
+    agentsList: [1720, 45], agentsLink: [1742, 30], hotkeys: [1724, 556],
+    // old separate-button spots (Vici's real buttons, now hidden behind the modern column)
+    webform: [10, 160], park: [10, 185], transfer: [10, 210], hangup: [10, 235], dtmf: [10, 265],
+    manual: [40, 305], leadsearch: [35, 335], callbacks: [5, 365]
   };
   const byId = (id) => document.getElementById(id);
   let laidOut = false, viewsSet = false, styleSet = false;
@@ -1555,6 +1559,8 @@ function readHomesPage(doc) {
         #vl-hk i{width:10px;height:10px;border-radius:50%;background:#9fb7de}
         #vl-hk.on{background:linear-gradient(#2fbf4f,#159a35)} #vl-hk.on i{background:#d9ffd9}
         #vl-livebadge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font:700 11px "Segoe UI",Arial;letter-spacing:.04em;white-space:nowrap}
+        #vl-status{visibility:hidden!important}
+        #dialableleadsspan,#vl-custtime{font-size:13px!important;line-height:18px}#dialableleadsspan *{font-size:13px!important}
         #vl-livebadge i{width:9px;height:9px;border-radius:50%}
         #vl-livebadge.off{background:#e3e6ea;color:#6b7480;border:1px solid #b9c0c8}#vl-livebadge.off i{background:#9aa3ad}
         #vl-livebadge.on{background:#1aa33c;color:#fff}#vl-livebadge.on i{background:#d9ffd9;box-shadow:0 0 0 3px rgba(255,255,255,.35)}
