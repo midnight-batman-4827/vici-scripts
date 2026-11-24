@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      12.6
+// @version      12.7
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1651,78 +1651,74 @@ function readHomesPage(doc) {
   // ---------- Pitch sheet (Mortgageusa's paper pitch sheet, filled in from the lead + property sites) ----------
   // Blue fields were filled in automatically; once the LO types in one it turns white and is never overwritten.
   // Nothing is saved: the sheet clears when the next call (lead) comes up.
-  const PS_PICK1 = ['vet', 'married', 'inc', 'cmarried', 'cinc', 'occ', 'rtype', 'escrow'];   // pick-one groups
+  const PS_PICK1 = ['vet', 'married', 'inc', 'cmarried', 'cinc', 'occ', 'rtype', 'escrow', 'ptype', 'pitch'];   // pick-one groups
   function pitchHTML() {
-    const t = (k, ph) => `<input class="f" data-k="${k}"${ph ? ` placeholder="${ph}"` : ''}>`;
-    const w = (k, cls) => `<input class="f ${cls}" data-k="${k}">`;
-    const yn = (g, a = 'Y', b = 'N') => `<span class="yn" data-g="${g}"><button type="button" class="t">${a}</button><button type="button" class="t">${b}</button></span>`;
-    const pills = (g, list) => `<span class="opts" data-g="${g}">${list.map((x) => `<button type="button" class="p">${x}</button>`).join('')}</span>`;
-    const R = (...a) => `<div class="row">${a.join('')}</div>`, L = (x) => `<label>${x}</label>`;
+    const F = (k, label, cls = '', extra = '') => `<div class="fl ${cls}"><label>${label}</label><input class="in" data-k="${k}"${extra}></div>`;
+    const T = (k, label, rows = 2, cls = '') => `<div class="fl ${cls}"><label>${label}</label><textarea class="in grow" data-k="${k}" rows="${rows}"></textarea></div>`;
+    const C = (g, label, list, cls = '', y = false) => `<div class="fl ${cls}"><label>${label}</label><div class="ch" data-g="${g}">${list.map((x) => `<button type="button" class="${y ? 't' : 'p'}">${x}</button>`).join('')}</div></div>`;
+    const SEC = (n, title, body, aside = '', cls = '') => `<div class="sec ${cls}"><h3><span class="n">${n}</span>${title}${aside}</h3>${body}</div>`;
+    const G = (cols, inner) => `<div class="g c${cols}">${inner}</div>`, SUB = (x) => `<div class="sub">${x}</div>`;
+    const job = (p) => SUB('EMPLOYMENT &amp; INCOME') + G(3, F(p + 'emp', 'Employer') + F(p + 'title1', 'Position / title') + F(p + 'yrs', 'Years') +
+        F(p + 'income', 'Income') + C(p + 'inc', 'Paid on', ['W-2', '1099'], '', true) + F(p + 'prev', 'Previous employer')) +
+      SUB('OTHER INCOME') + G(4, F(p + 'ssi', 'SSI') + F(p + 'pension', 'Pension') + F(p + 'dis', 'Disability') + F(p + 'ira', 'IRA') + F(p + 'addl', 'Additional income', 's4'));
     return `<div class="bar"><b>Pitch sheet<span data-k="title"></span></b><button type="button" data-a="pdf">Save as PDF</button><button type="button" class="go" data-a="send" title="Coming next: tell Claude how sheets get to the team lead">Send to Team Lead</button></div>
-      <div class="legend"><i></i>Filled in from the lead and property sites. Confirm each one; typing over it is fine.</div>
       <div class="page">
-      ${R(L('GOALS:'), t('goals'))}${R(t('goals2'))}${R(L('Notes:'), t('notes'))}<div class="rule"></div>
-      ${R(L('Veteran'), yn('vet'), L('% of Disability'), w('disab', 'sm'), L('Email'), t('email'))}
-      ${R(L('Borrower'), t('borrower'), L('Married'), yn('married'), '<span class="q">"Are you and your spouse on the same page?"</span>')}
-      ${R(L('SSN'), '<input class="f" data-k="ssn" type="password" autocomplete="off" title="Same as the SSN box on the lead">', L('DOB'), t('dob'), L('Credit Score'), w('credit', 'sm'))}
-      ${R(L('Phone # Home'), t('phone'), L('Cell'), t('cell'), L('Work'), t('work'))}
-      ${R(L('Present Address'), t('addr'), L('City:'), w('city', 'md'))}
-      ${R(L('State:'), w('state', 'sm'), L('Zip:'), w('zip', 'sm'), L('County:'), t('county'))}
-      ${R(L('Employer'), t('emp'), L('Pos./Title'), t('title1'), L('Yrs:'), w('yrs', 'sm'))}
-      ${R(L('Income'), t('income'), yn('inc', '1099', 'W2'), L('Prev. Emp'), t('prev'))}
-      ${R(L('SSI'), t('ssi'), L('Pension'), t('pension'), L('Disability'), t('dis'), L('IRA'), t('ira'))}
-      ${R(L('Additional Income'), t('addl'))}<div class="rule"></div>
-      ${R(L('Co Borrower'), t('cob'), L('Married'), yn('cmarried'), L('DOB'), w('cdob', 'md'), L('Credit Score'), w('ccredit', 'sm'))}
-      ${R(L('Employer'), t('cemp'), L('Pos./Title'), t('ctitle'), L('Yrs'), w('cyrs', 'sm'))}
-      ${R(L('Employer Address'), t('cempaddr'))}
-      ${R(L('Income'), t('cincome'), yn('cinc', '1099', 'W2'), L('Prev. Emp'), t('cprev'))}
-      ${R(L('SSI'), t('cssi'), L('Pension'), t('cpension'), L('Disability'), t('cdis'), L('IRA'), t('cira'))}
-      ${R(L('Additional Income'), t('caddl'))}<div class="rule"></div>
-      <div class="h">Subject Property Info</div>${pills('occ', ['Primary', 'Second', 'Investment'])}
-      <div class="h">Property Type</div>${pills('ptype', ['Condo', 'SFR', 'Townhouse', 'Manufactured', 'Mobile', '2-4 Unit'])}
-      ${R(L('Last Refi'), w('refi', 'sm'), L('Purchase YR'), w('pyear', 'sm'), L('Purchase Price'), t('pprice'))}
-      ${R(L('1st Mortgage Holder'), t('holder'), L('Balance:'), w('balance', 'md'))}
-      ${R(L('Client Value'), t('value'), '<span class="est" data-k="estnote"></span>')}
-      ${R(L('Payment'), w('payment', 'md'), L('Escrowed:'), yn('escrow'), L('Taxes'), w('taxes', 'md'))}
-      ${R(L('Insurance'), t('ins'), L('PMI:'), t('pmi'), L('HOA'), t('hoa'))}
-      ${R(L('Rate'), w('rate', 'sm'), L('Term:'), w('term', 'sm'))}
-      <div class="opts2">${pills('rtype', ['Fixed', 'Adjustable', 'Int. Only'])}<span class="dot">·</span>${pills('prog', ['FHA', 'Conv', 'VA', 'Fannie', 'Freddie'])}</div><div class="rule"></div>
-      <div class="two"><div>${R(L('Assets: Checking/Savings'), t('checking'))}${R(L('Retirement Accounts'), t('retire'))}${R(L('Brokerage Accounts'), t('broker'))}</div>
-        <div class="box">Other Offer Received:<textarea data-k="offer"></textarea></div></div><div class="rule"></div>
-      <div class="box">Pitch: &nbsp; ${pills('pitch', ['CONV', 'FHA', 'VA'])}<textarea data-k="pitch" style="min-height:80px"></textarea></div>
+      ${SEC(1, 'GOALS &amp; NOTES', `<div class="g">${T('goals', 'What does the borrower want?')}${T('notes', 'Notes')}</div>`)}
+      ${SEC(2, 'BORROWER', G(3, F('borrower', 'Full name', 's2') + F('dob', 'Date of birth') + F('credit', 'Credit score') +
+          F('ssn', 'SSN <span class="lock">· same as Vici\'s SSN box</span>', '', ' type="password" autocomplete="off"') + F('email', 'Email') +
+          F('phone', 'Home phone') + F('cell', 'Cell') + F('work', 'Work') +
+          C('married', 'Married?', ['Yes', 'No'], '', true) + '<div class="prompt s2">Ask: "Are you and your spouse on the same page?"</div>' +
+          C('vet', 'Veteran?', ['Yes', 'No'], '', true) + F('disab', '% disability')) +
+        SUB('PRESENT ADDRESS') + G(4, F('addr', 'Street', 's4') + F('city', 'City', 's2') + F('state', 'State') + F('zip', 'ZIP') + F('county', 'County', 's2')) +
+        job(''))}
+      ${SEC(3, 'CO-BORROWER', `<div class="cob-off">Opens the same name, credit, employment and income fields when there is one.</div>
+          <div class="cob" hidden>${G(3, F('cob', 'Full name', 's2') + F('cdob', 'Date of birth') + F('ccredit', 'Credit score') + C('cmarried', 'Married?', ['Yes', 'No'], '', true)) +
+          SUB('EMPLOYER ADDRESS') + G(1, F('cempaddr', 'Street, city, state')) + job('c')}</div>`, '<button type="button" class="aside" data-a="cob">+ Add co-borrower</button>')}
+      ${SEC(4, 'PROPERTY', G(3, C('occ', 'Occupancy', ['Primary', 'Second home', 'Investment'], 's3') +
+          C('ptype', 'Property type', ['Condo', 'SFR', 'Townhouse', 'Manufactured', 'Mobile', '2-4 Unit'], 's3') +
+          F('pyear', 'Purchase year') + F('pprice', 'Purchase price') + F('refi', 'Last refi') +
+          `<div class="fl"><label>Client value</label><input class="in" data-k="value"><div class="hint" data-k="estnote"></div></div>`))}
+      ${SEC(5, 'CURRENT MORTGAGE', G(3, F('holder', '1st mortgage holder', 's2') + F('balance', 'Balance') + F('rate', 'Rate') + F('term', 'Term') + F('payment', 'Payment') +
+          `<div class="fl s3"><label>Loan</label><div class="ch2"><span class="ch" data-g="rtype">${['Fixed', 'Adjustable', 'Interest only'].map((x) => `<button type="button" class="p">${x}</button>`).join('')}</span>
+            <span class="ch" data-g="prog">${['FHA', 'Conv', 'VA', 'Fannie', 'Freddie'].map((x) => `<button type="button" class="p">${x}</button>`).join('')}</span></div></div>` +
+          C('escrow', 'Escrowed?', ['Yes', 'No'], '', true) + F('taxes', 'Taxes') + F('ins', 'Insurance') + F('pmi', 'PMI') + F('hoa', 'HOA')))}
+      ${SEC(6, 'ASSETS', G(3, F('checking', 'Checking / savings') + F('retire', 'Retirement') + F('broker', 'Brokerage')))}
+      ${SEC(7, 'OTHER OFFER RECEIVED', `<textarea class="in grow" data-k="offer" rows="2"></textarea>`)}
+      ${SEC(8, 'PITCH', `<div class="ch" data-g="pitch" style="margin-bottom:6px">${['CONV', 'FHA', 'VA'].map((x) => `<button type="button" class="p">${x}</button>`).join('')}</div>
+          <textarea class="in grow" data-k="pitch" rows="3" placeholder="Program, rate, payment, cash out, savings…"></textarea>`, '', 'pitchsec')}
       </div>`;
   }
   const PS_CSS = `
-    #vl-pitch{background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden;font:12px Arial,Helvetica,sans-serif;color:#111}
+    #vl-pitch{background:#f4f6f9;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden;font:12px "Segoe UI",Arial,sans-serif;color:#1d2530}
     #vl-pitch *{box-sizing:border-box}
-    #vl-pitch .bar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f1f3f6;border-bottom:1px solid #d6dbe2}
-    #vl-pitch .bar b{font-size:13px;flex:1}
-    #vl-pitch .bar button{font:600 12px "Segoe UI",Arial;border:1px solid #c4ccd6;background:#fff;border-radius:6px;padding:5px 10px;cursor:pointer}
+    #vl-pitch .bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fff;border-bottom:1px solid #dde2e8}
+    #vl-pitch .bar b{font-size:14px;flex:1}#vl-pitch .bar b span{font-weight:400;color:#5b6675}
+    #vl-pitch .bar button{font:600 12px "Segoe UI",Arial;border:1px solid #c4ccd6;background:#fff;color:#1d2530;border-radius:6px;padding:6px 11px;cursor:pointer}
     #vl-pitch .bar button.go{background:#2563eb;border-color:#2563eb;color:#fff;opacity:.6}
-    #vl-pitch .legend{font-size:11px;color:#555;padding:4px 12px;background:#fafbfc;border-bottom:1px solid #eceff3}
-    #vl-pitch .legend i{display:inline-block;width:10px;height:10px;background:#e7f0ff;border:1px solid #9db8e8;vertical-align:-1px;margin-right:4px}
-    #vl-pitch .page{flex:1;overflow:auto;overscroll-behavior:contain;padding:12px 20px 26px}
-    #vl-pitch .row{display:flex;align-items:flex-end;gap:8px;margin:7px 0}
-    #vl-pitch label{white-space:nowrap;font-weight:600;font-size:11.5px}
-    #vl-pitch .f{flex:1;border:0;border-bottom:1px solid #222;font:12px Arial;padding:1px 3px;min-width:0;height:18px;background:transparent;color:#111}
-    #vl-pitch .f.auto{background:#e7f0ff;border-bottom-color:#4a77c8}
-    #vl-pitch .f:focus{outline:2px solid #2563eb;outline-offset:1px;background:#fff}
-    #vl-pitch .sm{flex:0 0 60px}#vl-pitch .md{flex:0 0 110px}
-    #vl-pitch .rule{border-top:2px solid #111;margin:10px 0 6px}
-    #vl-pitch .h{font-weight:700;text-align:center;margin:8px 0 3px}
-    #vl-pitch .opts{display:inline-flex;gap:6px;justify-content:center;flex-wrap:wrap}
-    #vl-pitch .h+.opts{display:flex}
-    #vl-pitch .opts2{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;align-items:center;margin-top:6px}
-    #vl-pitch .t,#vl-pitch .p{font:11.5px Arial;border:1px solid #888;background:#fff;color:#111;border-radius:10px;padding:1px 8px;margin:0 1px;cursor:pointer}
-    #vl-pitch .t.on,#vl-pitch .p.on{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:700}
-    #vl-pitch .p.auto:not(.on){border-color:#4a77c8}
-    #vl-pitch .p.on.auto{background:#4a77c8}
-    #vl-pitch .yn{white-space:nowrap}
-    #vl-pitch .q{border:1.5px solid #111;padding:3px 8px;font-size:11.5px;white-space:nowrap}
-    #vl-pitch .two{display:flex;gap:14px}#vl-pitch .two>*{flex:1}
-    #vl-pitch .box{border:1.5px solid #111;min-height:70px;padding:5px 7px;font-weight:600;font-size:11.5px}
-    #vl-pitch textarea{display:block;width:100%;border:0;resize:vertical;font:12px Arial;margin-top:4px;min-height:50px;outline:none;background:transparent;color:#111}
-    #vl-pitch .est{font-size:10px;color:#4a77c8;white-space:nowrap}`;
+    #vl-pitch .page{flex:1;overflow:auto;overscroll-behavior:contain;padding:10px 12px 20px;display:flex;flex-direction:column;gap:10px}
+    #vl-pitch .sec{background:#fff;border:1px solid #dde2e8;border-radius:9px;padding:9px 12px 11px}
+    #vl-pitch .sec.pitchsec{border-color:#2563eb}#vl-pitch .sec.pitchsec .n{background:#2563eb}
+    #vl-pitch h3{margin:0 0 7px;font:700 11px "Segoe UI",Arial;letter-spacing:.06em;color:#4a5563;display:flex;align-items:center;gap:8px}
+    #vl-pitch h3 .n{width:18px;height:18px;border-radius:50%;background:#1f2f4d;color:#fff;font-size:10px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:0}
+    #vl-pitch h3 .aside{margin-left:auto;font:600 11.5px "Segoe UI",Arial;letter-spacing:0;color:#2563eb;background:none;border:0;cursor:pointer;padding:0}
+    #vl-pitch .g{display:grid;gap:7px 10px}#vl-pitch .c1{grid-template-columns:1fr}#vl-pitch .c2{grid-template-columns:1fr 1fr}
+    #vl-pitch .c3{grid-template-columns:1fr 1fr 1fr}#vl-pitch .c4{grid-template-columns:1fr 1fr 1fr 1fr}
+    #vl-pitch .s2{grid-column:span 2}#vl-pitch .s3{grid-column:span 3}#vl-pitch .s4{grid-column:1/-1}
+    #vl-pitch .fl{display:flex;flex-direction:column;gap:2px;min-width:0}
+    #vl-pitch .fl label{font-size:10.5px;color:#5b6675;font-weight:600}
+    #vl-pitch .in{height:24px;border:1px solid #cdd4dd;border-radius:5px;padding:2px 7px;font:12px "Segoe UI",Arial;background:#fff;color:#1d2530;width:100%;margin:0}
+    #vl-pitch .in.auto{background:#e8f0ff;border-color:#9db8e8}
+    #vl-pitch .in:focus{outline:2px solid #2563eb;outline-offset:0;border-color:#2563eb;background:#fff}
+    #vl-pitch textarea.in{height:auto;min-height:40px;resize:none;overflow:hidden;line-height:16px}
+    #vl-pitch .ch,#vl-pitch .ch2{display:flex;gap:5px;flex-wrap:wrap;align-items:center}#vl-pitch .ch2{gap:12px}
+    #vl-pitch .t,#vl-pitch .p{font:11.5px "Segoe UI",Arial;border:1px solid #c4ccd6;border-radius:12px;padding:2px 9px;background:#fff;color:#1d2530;cursor:pointer;margin:0}
+    #vl-pitch .t.on,#vl-pitch .p.on{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600}
+    #vl-pitch .p.on.auto{background:#4a77c8;border-color:#4a77c8}
+    #vl-pitch .prompt{font-size:11.5px;color:#7a4b00;background:#fff4dd;border:1px solid #f0d39a;border-radius:6px;padding:4px 8px;align-self:end}
+    #vl-pitch .hint{font-size:10.5px;color:#2563eb;margin-top:1px}
+    #vl-pitch .sub{font:700 10.5px "Segoe UI",Arial;color:#4a5563;letter-spacing:.05em;margin:9px 0 5px;border-top:1px dashed #dde2e8;padding-top:7px}
+    #vl-pitch .cob-off{color:#5b6675}
+    #vl-pitch .lock{font-weight:400;color:#5b6675}`;
 
   let psLead = null;
   const typeToPill = (t) => { t = String(t || '').toLowerCase();
@@ -1735,10 +1731,15 @@ function readHomesPage(doc) {
       if (!byId('vl-pitch-style')) { const st = document.createElement('style'); st.id = 'vl-pitch-style'; st.textContent = PS_CSS; document.head.appendChild(st); }
       ps.innerHTML = pitchHTML();
       ps.addEventListener('input', (e) => { const f = e.target.closest('[data-k]'); if (!f) return; f.dataset.touched = '1'; f.classList.remove('auto');
+        if (f.classList.contains('grow')) { f.style.height = 'auto'; f.style.height = f.scrollHeight + 2 + 'px'; }
         if (f.dataset.k === 'ssn' && byId('alt_phone')) byId('alt_phone').value = f.value; });
       ps.addEventListener('click', (e) => {
         const a = e.target.closest('[data-a]');
-        if (a) { e.preventDefault(); if (a.dataset.a === 'pdf') pitchPDF(); else a.title = 'Coming next: tell Claude how sheets get to the team lead'; return; }
+        if (a) { e.preventDefault();
+          if (a.dataset.a === 'pdf') pitchPDF();
+          else if (a.dataset.a === 'cob') { const cb = ps.querySelector('.cob'), open = cb.hidden; cb.hidden = !open; ps.querySelector('.cob-off').hidden = open; a.textContent = open ? '− Remove co-borrower' : '+ Add co-borrower'; }
+          else a.title = 'Coming next: tell Claude how sheets get to the team lead';
+          return; }
         const b = e.target.closest('.t,.p'); if (!b) return;
         e.preventDefault();
         const g = b.parentElement; g.dataset.touched = '1';
@@ -1755,9 +1756,10 @@ function readHomesPage(doc) {
     const lead = byId('lead_id') ? byId('lead_id').value : '';
     if (lead !== psLead) {
       psLead = lead;
-      ps.querySelectorAll('[data-k]').forEach((f) => { if ('value' in f) f.value = ''; else f.textContent = ''; delete f.dataset.touched; f.classList.remove('auto'); });
+      ps.querySelectorAll('[data-k]').forEach((f) => { if ('value' in f) f.value = ''; else f.textContent = ''; delete f.dataset.touched; f.classList.remove('auto'); if (f.classList.contains('grow')) f.style.height = ''; });
       ps.querySelectorAll('[data-g]').forEach((g) => { delete g.dataset.touched; g.querySelectorAll('.on,.auto').forEach((o) => o.classList.remove('on', 'auto')); });
       ps.querySelector('.page').scrollTop = 0;
+      const cb = ps.querySelector('.cob'); if (cb) { cb.hidden = true; ps.querySelector('.cob-off').hidden = false; ps.querySelector('[data-a="cob"]').textContent = '+ Add co-borrower'; }
     }
     // fill in what we know (never over the LO's own typing)
     const val = (id) => (byId(id) ? String(byId(id).value || '').trim() : '');
@@ -1799,13 +1801,15 @@ function readHomesPage(doc) {
     const clone = ps.querySelector('.page').cloneNode(true);
     clone.querySelectorAll('input').forEach((i) => {
       const v = i.dataset.k === 'ssn' ? (i.value ? '***-**-' + i.value.replace(/\D/g, '').slice(-4) : '') : i.value;
-      const s = document.createElement('span'); s.className = i.className.replace('auto', ''); s.textContent = v; i.replaceWith(s); });
-    clone.querySelectorAll('textarea').forEach((t) => { const d = document.createElement('div'); d.style.whiteSpace = 'pre-wrap'; d.style.fontWeight = '400'; d.textContent = t.value; t.replaceWith(d); });
+      const s = document.createElement('div'); s.className = i.className.replace('auto', ''); s.textContent = v; i.replaceWith(s); });
+    clone.querySelectorAll('textarea').forEach((t) => { const d = document.createElement('div'); d.className = 'in'; d.textContent = t.value; t.replaceWith(d); });
     const win = window.open('', '_blank', 'width=820,height=1000');
     if (!win) { alert('Allow pop-ups for Vici to save the pitch sheet as a PDF.'); return; }
     win.document.write(`<!DOCTYPE html><title>Pitch sheet</title><style>${PS_CSS.replace(/#vl-pitch /g, '')}
-      body{margin:0;font:12px Arial,Helvetica,sans-serif;color:#111}.page{padding:0 6px}.f{display:inline-block;height:auto;min-height:16px}
+      body{margin:0;font:12px "Segoe UI",Arial,sans-serif;color:#111}.page{display:flex;flex-direction:column;gap:8px}
+      .in{display:block;height:auto;min-height:22px;white-space:pre-wrap}.in.auto{background:#fff;border-color:#cdd4dd}
       .t,.p{border:1px solid #888}.t.on,.p.on{background:#111!important;color:#fff;border-color:#111}
+      .sec{break-inside:avoid}.aside,.cob-off,.cob[hidden]{display:none}
       @page{size:letter;margin:.45in}@media print{.row{margin:5px 0}}</style><div class="page">${clone.innerHTML}</div>`);
     win.document.close();
     setTimeout(() => { try { win.focus(); win.print(); } catch (e) {} }, 300);
