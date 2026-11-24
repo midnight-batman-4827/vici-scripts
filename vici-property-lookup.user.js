@@ -1,10 +1,16 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.3
+// @version      10.4
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
+// @match        *://www.homes.com/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_addValueChangeListener
+// @grant        GM_removeValueChangeListener
+// @grant        GM_openInTab
 // @connect      www.zillowstatic.com
 // @connect      parser-external.geo.moveaws.com
 // @connect      www.zillow.com
@@ -18,6 +24,109 @@
 
 (function () {
   'use strict';
+
+function readHomesPage(doc) {
+  const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+  const money = (s) => { const m = String(s || '').match(/\$[\d,]+(\.\d+)?/); return m ? parseFloat(m[0].replace(/[$,]/g, '')) : null; };
+  const out = { photos: [], highlights: [], groups: [], priceHistory: [], taxHistory: [] };
+
+  // structured listing block: beds, baths, size, year, type, photos
+  let ent = null;
+  doc.querySelectorAll('script[type="application/ld+json"]').forEach((s) => {
+    try {
+      const j = JSON.parse(s.textContent);
+      (j['@graph'] || [j]).forEach((n) => { if (!ent && n && n.mainEntity && n.mainEntity.address) ent = n.mainEntity; });
+    } catch (e) {}
+  });
+  if (ent) {
+    out.beds = ent.numberOfBedrooms; out.baths = ent.numberOfBathroomsTotal;
+    out.sqft = ent.floorSize && ent.floorSize.value; out.yearBuilt = ent.yearBuilt || '';
+    out.type = ent.accommodationCategory || ent['@type'] || '';
+    out.street = ent.address && ent.address.streetAddress; out.city = ent.address && ent.address.addressLocality;
+    out.photos = (ent.image || []).map((i) => (typeof i === 'string' ? i : i.url)).filter(Boolean).map((u) => ({ full: u, thumb: u, caption: '' }));
+  }
+
+  out.status = txt(doc.querySelector('.property-info-status-pill'));
+  out.estimate = money(txt(doc.querySelector('.property-estimated-info')));
+  out.listPrice = money(txt(doc.querySelector('.property-info-price')));
+  doc.querySelectorAll('.content-widget-detail').forEach((el) => {
+    const t = txt(el);
+    let m = t.match(/Date Sold:\s*(.+)$/i); if (m) out.soldDate = m[1];
+    m = t.match(/Last sale price\s*(\$[\d,]+)/i); if (m) out.soldPrice = money(m[1]);
+  });
+
+  doc.querySelectorAll('li.highlight .highlight-value').forEach((el) => { const t = txt(el); if (t) out.highlights.push(t); });
+  doc.querySelectorAll('.subcategory').forEach((sc) => {
+    const name = txt(sc.querySelector('.amenity-name'));
+    const vals = [...sc.querySelectorAll('li.amenities-detail')].map(txt).filter(Boolean);
+    if (name && vals.length) out.groups.push([name, vals]);
+  });
+
+  doc.querySelectorAll('table.price-table tbody tr').forEach((tr) => {
+    out.priceHistory.push({ date: txt(tr.querySelector('.long-date')) || txt(tr.querySelector('th')), event: txt(tr.querySelector('.price-event')), price: money(txt(tr.querySelector('.price-price'))) });
+  });
+  doc.querySelectorAll('table.tax-table tbody tr').forEach((tr) => {
+    out.taxHistory.push({ year: txt(tr.querySelector('.tax-year')), tax: money(txt(tr.querySelector('.tax-amount'))), value: money(txt(tr.querySelector('.tax-assessment'))) });
+  });
+  return out;
+}
+
+  // also the photos shown in the page's own gallery
+  function homesPhotos(doc, list) {
+    const seen = new Set(list.map((p) => p.full));
+    doc.querySelectorAll('img[src*="images.homes.com/listings"], img[data-src*="images.homes.com/listings"]').forEach((im) => {
+      const u = im.getAttribute('data-src') || im.src;
+      if (u && !seen.has(u) && !/logo|agent|headshot/i.test(u)) { seen.add(u); list.push({ full: u, thumb: u, caption: '' }); }
+    });
+    return list;
+  }
+
+  // Runs on homes.com ONLY in a background tab the Vici script opened (marked #vprop-<id>);
+  // types the lead's address into Homes.com's search box, picks the matching suggestion,
+  // reads the property page and hands the data back to the Vici tab.
+  function homesWorker() {
+    const hashId = (location.hash.match(/^#vprop-(\d+)/) || [])[1];
+    if (hashId) sessionStorage.setItem('vpropJob', hashId);
+    const id = sessionStorage.getItem('vpropJob');
+    const job = GM_getValue('vpHomesJob', null);
+    if (!id || !job || String(job.id) !== id || Date.now() - job.t > 90000) return; // normal browsing: do nothing
+    const finish = (payload) => {
+      GM_setValue('vpHomesResult', Object.assign({ id: job.id }, payload));
+      sessionStorage.removeItem('vpropJob');
+      setTimeout(() => window.close(), 300);
+    };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    (async () => {
+      if (/^\/property\//.test(location.pathname)) {
+        await sleep(1200);
+        const d = readHomesPage(document);
+        d.photos = homesPhotos(document, d.photos);
+        return finish({ ok: true, url: location.href.split('#')[0], data: d });
+      }
+      // home page: type the address the way a person would and pick Homes.com's matching suggestion
+      let input = null;
+      for (let i = 0; i < 40 && !input; i++) {
+        input = [...document.querySelectorAll('input[type="text"], input:not([type])')].find((el) => el.offsetParent && /place|address|city/i.test((el.getAttribute('aria-label') || '') + (el.placeholder || '')));
+        if (!input) await sleep(250);
+      }
+      if (!input) return finish({ ok: false, why: 'search box not found' });
+      const setVal = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      input.focus();
+      setVal.call(input, job.query);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'r' }));
+      const want = String(job.street || '').toLowerCase().split(/\s+/).slice(0, 2).join(' ');
+      for (let i = 0; i < 40; i++) {
+        await sleep(250);
+        const btn = [...document.querySelectorAll('button.suggestion-btn')].find((b) => /address/i.test(b.textContent) && b.textContent.toLowerCase().replace(/\s+/g, ' ').includes(want));
+        if (btn) { btn.click(); return; } // the page navigates to the property; this helper runs again there
+      }
+      finish({ ok: false, why: 'no matching address on Homes.com' });
+    })();
+  }
+
+  if (/(^|\.)homes\.com$/.test(location.hostname)) { homesWorker(); return; }
+
 
   // =====================================================================
   //  Read the lead
@@ -140,7 +249,7 @@
         : google('realtor.com', a),
       exact: (c) => !!c.realtor },
     { key: 'homes', domain: 'homes.com', label: 'Homes.com', color: '#f05a28',
-      url: (a, c) => google('homes.com', c.zillow ? { street: c.zillow.line, city: c.zillow.city, state: c.zillow.state, zip: c.zillow.zip } : a),
+      url: (a, c) => c.homesUrl || google('homes.com', c.zillow ? { street: c.zillow.line, city: c.zillow.city, state: c.zillow.state, zip: c.zillow.zip } : a),
       exact: () => false },
     { key: 'trulia', domain: 'trulia.com', label: 'Trulia', color: '#007882',
       url: (a, c) => c.zillow ? `https://www.trulia.com/home/${zSlug(c.zillow).toLowerCase()}-${c.zillow.zpid}` : google('trulia.com', a),
@@ -406,7 +515,12 @@
     renderAll();
     const done = (o) => { c.sites[key] = Object.assign({ url: s.url(a, c) }, o); renderAll(); };
 
-    if (key === 'homes') return done({ state: 'nosource' });
+    if (key === 'homes') {
+      const r = await homesLookup(a);
+      if (!r || !r.ok) return done({ state: 'error', code: r ? r.why : 'no answer from the Homes.com tab' });
+      c.homesUrl = r.url;
+      return done({ state: 'ok', model: fromHomes(r.data), url: r.url });
+    }
     if ((key === 'zillow' || key === 'trulia') && !c.zillow) return done({ state: 'nomatch' });
     if (key === 'realtor' && !c.realtor) return done({ state: 'nomatch' });
 
@@ -429,7 +543,46 @@
   }
 
   function loadDetails(a, c) {
-    ['zillow', 'trulia', 'realtor', 'homes'].forEach((k) => loadSite(a, c, k));
+    ['zillow', 'trulia', 'realtor'].forEach((k) => loadSite(a, c, k)); // Homes.com loads when its tab is opened
+  }
+
+  // Opens homes.com in a background tab, lets the homes.com helper search the address, waits for its answer
+  function homesLookup(a) {
+    return new Promise((resolve) => {
+      const id = Date.now();
+      GM_setValue('vpHomesJob', { id, t: id, query: a.full, street: a.street });
+      let tab = null, done = false;
+      const listener = GM_addValueChangeListener('vpHomesResult', (name, oldV, v) => {
+        if (!v || v.id !== id || done) return;
+        done = true; GM_removeValueChangeListener(listener);
+        try { tab && tab.close(); } catch (e) {}
+        resolve(v);
+      });
+      tab = GM_openInTab('https://www.homes.com/#vprop-' + id, { active: false, insert: true, setParent: true });
+      setTimeout(() => { if (done) return; done = true; GM_removeValueChangeListener(listener); try { tab && tab.close(); } catch (e) {} resolve(null); }, 40000);
+    });
+  }
+
+  // Homes.com page data -> the common shape
+  function fromHomes(d) {
+    const g = {}; (d.groups || []).forEach(([k, v]) => { g[k.toLowerCase()] = v; });
+    const first = (k) => (g[k] || [])[0] || '';
+    const groups = [];
+    if ((d.highlights || []).length) groups.push(['Highlights', d.highlights.map((v) => ['', v])]);
+    (d.groups || []).forEach(([k, vals]) => { if (!/^(home type|year built|hoa fees|parking)$/i.test(k)) groups.push([k, vals.map((v) => ['', v])]); });
+    const st = String(d.status || '');
+    return {
+      photos: d.photos || [], streetViewOnly: false, estimateLabel: 'Homes.com estimated value',
+      status: /not listed/i.test(st) ? 'Off market' : st.toLowerCase().replace(/\b\w/g, (x) => x.toUpperCase()),
+      soldDate: d.soldDate, soldPrice: d.soldPrice, estimate: d.estimate || null, listPrice: /for sale/i.test(st) ? d.listPrice : null,
+      history: null, beds: d.beds, baths: d.baths, sqft: d.sqft, yearBuilt: d.yearBuilt || '',
+      type: first('home type') || words(String(d.type || '')).replace(/Residence$/, ''),
+      lot: first('lot details'), parking: first('parking'), hoa: first('hoa fees'), rent: '', county: '',
+      groups,
+      priceHistory: (d.priceHistory || []).map((e) => ({ date: e.date, event: e.event, price: e.price })),
+      taxHistory: (d.taxHistory || []).map((t) => ({ year: t.year, tax: t.tax, value: t.value })),
+      street: d.street || '', city: d.city || ''
+    };
   }
 
   // =====================================================================
@@ -1014,6 +1167,8 @@
       tabs[s.key].title = `${s.label}: ` + ({ ok: 'facts ready', shared: 'facts ready', loading: 'loading…', blocked: 'blocked by the site – open it directly',
         nomatch: 'no exact match', nosource: 'open on the site', error: 'couldn\'t load', idle: 'waiting for a lead address' }[st] || st);
     });
+    // Homes.com only loads when its tab is open
+    if (openKey === 'homes' && c && c.done && siteState(c, 'homes').state === 'idle') loadSite(a, c, 'homes');
     if (!screen || !openKey) return;
     const st = c ? siteState(c, openKey) : {};
     const key = openKey + '|' + a.full + '|' + st.state + '|' + (c ? SITES.map((x) => siteState(c, x.key).state).join(',') : '') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
