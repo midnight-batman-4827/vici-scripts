@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      11.3
+// @version      11.4
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -875,24 +875,24 @@ function readHomesPage(doc) {
 
 
     #vprop-card{position:absolute;z-index:8000;box-sizing:border-box;background:#fff;color:#1f2733;border:1px solid #cfd5dd;border-radius:12px;
-      box-shadow:0 2px 10px rgba(20,30,50,.08);font:13px/1.4 'Segoe UI',Arial,sans-serif;padding:12px 16px 14px;cursor:pointer}
+      box-shadow:0 2px 10px rgba(20,30,50,.08);font:13px/1.4 'Segoe UI',Arial,sans-serif;padding:12px 12px 10px;cursor:pointer;overflow:auto;overscroll-behavior:contain}
     #vprop-card:hover{border-color:#9fb0c6}
-    #vprop-card .vc-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
+    #vprop-card .vc-head{margin-bottom:10px}
     #vprop-card .vc-title{font-weight:700;font-size:14px}
-    #vprop-card .vc-addr{color:#5b6675}
+    #vprop-card .vc-addr{color:#5b6675;font-size:12px}
     #vprop-card .vc-sp{flex:1}
-    #vprop-card .vc-hint{font-size:11px;color:#8a94a3}
-    #vprop-card .vc-row{display:flex;gap:14px;align-items:stretch}
-    #vprop-card .vc-hero{flex:0 0 210px;background:#f3f6fa;border-radius:10px;padding:10px 12px}
+    #vprop-card .vc-hint{font-size:11px;color:#8a94a3;text-align:center;margin-top:10px}
+    #vprop-card .vc-row{display:flex;flex-direction:column;gap:8px}
+    #vprop-card .vc-hero{background:#f3f6fa;border-radius:10px;padding:10px 12px}
     #vprop-card .vc-hero:hover{background:#e9eff7}
-    #vprop-card .vc-big{font-size:28px;font-weight:700;line-height:1.15;margin:2px 0 6px}
+    #vprop-card .vc-big{font-size:26px;font-weight:700;line-height:1.15;margin:2px 0 6px}
     #vprop-card .vc-sites{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
     #vprop-card .vc-site{display:inline-flex;align-items:center;gap:4px;font:inherit;font-size:12px;font-weight:600;color:#1f2733;background:#fff;
       border:1px solid #d6dce4;border-radius:999px;padding:2px 8px 2px 5px;cursor:pointer}
     #vprop-card .vc-site:hover{border-color:#6b7f99}
     #vprop-card .vc-site img{border-radius:3px}
-    #vprop-card .vc-grid{flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-    #vprop-card .vc-tile{background:#f8fafc;border:1px solid #edf0f4;border-radius:8px;padding:7px 10px;min-width:0}
+    #vprop-card .vc-grid{display:flex;flex-direction:column;gap:6px}
+    #vprop-card .vc-tile{background:#f8fafc;border:1px solid #edf0f4;border-radius:8px;padding:6px 10px;min-width:0}
     #vprop-card .vc-k{font-size:11px;color:#6b7686;text-transform:uppercase;letter-spacing:.03em}
     #vprop-card .vc-v{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #vprop-card .vc-sub,#vprop-card .vp-owned{font-size:12px;color:#5b6675;display:inline}
@@ -1433,13 +1433,18 @@ function readHomesPage(doc) {
     const notes = field('call_notes') || [...document.querySelectorAll('textarea')].filter((t) => !t.closest('#vprop-screen, #vprop-card') && onScreen(t)).pop();
     return notes || field('address1');
   }
+  function hotKeysTop() {
+    const el = [...document.querySelectorAll('td, div, span, b, font')].find((e) => e.children.length < 3 && /^Disposition Hot Keys/i.test((e.textContent || '').trim()) && onScreen(e));
+    const r = el && el.getBoundingClientRect();
+    return r && r.top > 200 ? r.top : 0;
+  }
   function mainPanelOf(el) { for (let e = el; e && e !== document.body; e = e.parentElement) if (/MainPanel/i.test(e.id || '')) return e; return null; }
 
   function cardHTML(a, c) {
     const st = (k) => siteState(c, k);
     const ok = CARD_ORDER.filter((k) => st(k).state === 'ok' && st(k).model);
     const label = (k) => SITES.find((x) => x.key === k).label;
-    const head = (extra) => `<div class="vc-head"><span class="vc-title">Property at a glance</span><span class="vc-addr">${esc(a.full)}</span><span class="vc-sp"></span>${extra || ''}</div>`;
+    const head = () => `<div class="vc-head"><div class="vc-title">Property at a glance</div><div class="vc-addr">${esc(a.full)}</div></div>`;
     if (!c || !c.done || (!ok.length && CARD_ORDER.some((k) => ['loading'].includes(st(k).state) || (k !== 'homes' && st(k).state === 'idle'))))
       return head() + `<div class="vc-wait"><span class="vc-spin"></span>Looking up this property…</div>`;
     if (!ok.length) {
@@ -1476,7 +1481,7 @@ function readHomesPage(doc) {
     const picked = CARD_ORDER.map((k) => st(k).picked).find(Boolean);
     const partial = CARD_ORDER.filter((k) => !ok.includes(k) && (st(k).state === 'loading'));
 
-    return head(`<span class="vc-hint">Click a site for the full page</span>`) +
+    return head() +
       (picked ? `<div class="vc-warn">Close match, not the exact lead address: <b>${esc(nearLabel(picked))}</b>. Confirm the address with the borrower.</div>` : '') +
       `<div class="vc-row">
         <div class="vc-hero" data-vc-open="${main.key}" title="Open the ${esc(label(main.key))} tab">
@@ -1493,7 +1498,8 @@ function readHomesPage(doc) {
           ${tile('Home', esc(bb), esc([pick('yearBuilt') ? 'Built ' + pick('yearBuilt') : '', pick('type')].filter(Boolean).join(' · ')))}
           ${tile('Status', esc(pick('status') || ''), esc([pick('county'), main.listPrice ? 'List ' + kMoney(main.listPrice) : ''].filter(Boolean).join(' · ')))}
         </div>
-      </div>`;
+      </div>
+      <div class="vc-hint">Click for the full page</div>`;
   }
 
   function renderCard(a, c) {
@@ -1510,8 +1516,11 @@ function readHomesPage(doc) {
     const anchor = cardAnchor();
     const panel = anchor && mainPanelOf(anchor);
     if (!anchor || a.missing.length || openKey) { card.style.display = 'none'; return; }
-    const r = anchor.getBoundingClientRect();
-    const left = Math.max(8, r.left - 64), top = r.bottom + 18;
+    // right of the lead form: past the widest lead field, starting level with the top of the form
+    const formEls = ['address1', 'postal_code', 'call_notes', 'city', 'state', 'first_name', 'last_name'].map(field).filter((e) => e && onScreen(e)).concat(anchor);
+    const rects = formEls.map((e) => e.getBoundingClientRect()).filter((b) => b.width);
+    const left = Math.max(...rects.map((b) => b.right)) + 28;
+    const top = Math.max(8, Math.min(...rects.map((b) => b.top)) - 40);
     // only on Vici's main screen: hide when a SCRIPT panel (or anything else) is on top of this spot
     card.style.display = 'none';
     const hit = document.elementFromPoint(Math.min(left + 40, window.innerWidth - 1), Math.min(top + 20, window.innerHeight - 1));
@@ -1519,7 +1528,9 @@ function readHomesPage(doc) {
     card.style.display = '';
     const phone = [...document.querySelectorAll('iframe, #webphone, [id*="webphone" i]')].map((e) => e.getBoundingClientRect()).filter((b) => b.width > 150 && b.left > left + 400).map((b) => b.left);
     const right = Math.min(window.innerWidth - 12, ...(phone.length ? phone.map((x) => x - 16) : [window.innerWidth - 12]));
-    Object.assign(card.style, { left: left + window.scrollX + 'px', top: top + window.scrollY + 'px', width: Math.max(560, Math.min(1180, right - left)) + 'px' });
+    Object.assign(card.style, { left: left + window.scrollX + 'px', top: top + window.scrollY + 'px', width: Math.max(300, Math.min(360, right - left)) + 'px',
+      // stay above Vici's Disposition Hot Keys bar; scroll inside if the window is short
+      maxHeight: Math.max(240, (hotKeysTop() || window.innerHeight) - top - 16) + 'px' });
     const key = a.full + '|' + CARD_ORDER.map((k) => siteState(c || {}, k).state + (siteState(c || {}, k).picked ? 'p' : '')).join(',') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
     if (key === lastCardKey) return;
     lastCardKey = key;
