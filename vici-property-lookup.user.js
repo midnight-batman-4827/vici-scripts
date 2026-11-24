@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      8.9
+// @version      9.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -407,7 +407,7 @@
   // =====================================================================
   const isNum = (n) => n !== null && n !== '' && !isNaN(n);
   const money = (n) => isNum(n) ? '$' + Math.round(n).toLocaleString() : '';
-  const kMoney = (n) => !isNum(n) ? '' : Math.abs(n) >= 1e6 ? '$' + (n / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n);
+  const kMoney = (n) => !isNum(n) ? '' : Math.abs(n) >= 1e6 ? '$' + (n / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e4 ? '$' + Math.round(n / 1e3) + 'K' : Math.abs(n) >= 1e3 ? '$' + (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K' : '$' + Math.round(n);
   const num = (n) => isNum(n) ? Number(n).toLocaleString() : '';
   const day = (t) => {
     if (!t) return '';
@@ -560,6 +560,9 @@
     .vp-hl.wide{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px 18px}
     .vp-sec{margin:16px 0 10px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-top:1px solid var(--border);padding-top:14px}
     .vp-card h3 + .vp-sec{border-top:0;padding-top:0;margin-top:4px}
+    .vp-ctabs{display:flex;gap:4px;margin:-4px 0 10px;border-bottom:1px solid var(--border)}
+    .vp-ctabs button{border:0;background:none;padding:7px 12px;font:600 13px var(--font);color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
+    .vp-ctabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
     .vp-gal{width:fit-content;max-width:100%}
     .vp-stage{position:relative;display:block;width:fit-content;max-width:100%;border-radius:var(--radius);overflow:hidden}
@@ -673,8 +676,16 @@
       ${leadHTML}
     </div>` : '';
 
-    const chart = m.history && m.history.length > 1 ? chartSVG(m.history, Math.max(420, Math.round(((screen && screen.clientWidth) || 1400) - 58) * 1.15 / 2.15 - 38), 260, th.chart, 'Home value estimate over time')
+    const chartW = Math.max(420, Math.round(((screen && screen.clientWidth) || 1400) - 58) * 1.15 / 2.15 - 38);
+    const valueChart = m.history && m.history.length > 1 ? chartSVG(m.history, chartW, 260, th.chart, 'Home value estimate over time')
       : '<div class="vp-na">Value history isn\'t in this site\'s page data for this home.</div>';
+    // Tax paid per year (from the tax history), like Zillow's "Tax paid" chart
+    const taxPts = m.taxHistory.filter((t) => isNum(t.tax) && isNum(+t.year))
+      .map((t) => ({ t: Date.UTC(+t.year, 0, 1), v: t.tax })).sort((x, y) => x.t - y.t);
+    const chart = taxPts.length > 1
+      ? `<div class="vp-ctabs" role="tablist"><button type="button" class="on" data-vp-chart="value">Home values</button><button type="button" data-vp-chart="tax">Tax paid</button></div>
+         <div data-vp-pane="value">${valueChart}</div><div data-vp-pane="tax" hidden>${chartSVG(taxPts, chartW, 260, th.chart, 'Property tax paid by year')}</div>`
+      : valueChart;
 
     // one card, one look: icon + label + value for every fact
     const item = (ic, k, v, sub) => `<div><span class="ic">${icon(ic)}</span><div><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>${sub ? `<div class="k">${esc(sub)}</div>` : ''}</div></div>`;
@@ -828,6 +839,12 @@
       screen = document.createElement('div');
       screen.id = 'vprop-screen';
       screen.addEventListener('click', (e) => {
+        const ct = e.target.closest('[data-vp-chart]');
+        if (ct) {
+          screen.querySelectorAll('[data-vp-chart]').forEach((b) => b.classList.toggle('on', b === ct));
+          screen.querySelectorAll('[data-vp-pane]').forEach((p) => { p.hidden = p.dataset.vpPane !== ct.dataset.vpChart; });
+          return;
+        }
         const step = e.target.closest('[data-vp-step]'), th = e.target.closest('[data-vp-i]');
         if (step || th) showPhoto(step ? photoIndex + Number(step.dataset.vpStep) : Number(th.dataset.vpI));
       });
