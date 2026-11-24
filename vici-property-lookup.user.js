@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.8
+// @version      10.9
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -80,7 +80,8 @@ function readHomesPage(doc) {
     out.ownership.push({ dates: txt(c[0]), name: c[1].querySelector('.sign-in-pill') ? '' : txt(c[1]), ownedFor: txt(c[2]), type: txt(c[3]) });
   });
   doc.querySelectorAll('table.tax-table tbody tr').forEach((tr) => {
-    out.taxHistory.push({ year: txt(tr.querySelector('.tax-year')), tax: money(txt(tr.querySelector('.tax-amount'))), value: money(txt(tr.querySelector('.tax-assessment'))) });
+    out.taxHistory.push({ year: txt(tr.querySelector('.tax-year')), tax: money(txt(tr.querySelector('.tax-amount'))), value: money(txt(tr.querySelector('.tax-assessment'))),
+      land: money(txt(tr.querySelector('.tax-land'))), improvement: money(txt(tr.querySelector('.tax-improvement'))) });
   });
   return out;
 }
@@ -611,7 +612,7 @@ function readHomesPage(doc) {
       lot: first('lot details'), parking: first('parking'), hoa: first('hoa fees'), rent: '', county: '',
       groups,
       priceHistory: (d.priceHistory || []).map((e) => ({ date: e.date, event: e.event, price: e.price })),
-      taxHistory: (d.taxHistory || []).map((t) => ({ year: t.year, tax: t.tax, value: t.value })),
+      taxHistory: (d.taxHistory || []).map((t) => ({ year: t.year, tax: t.tax, value: t.value, land: t.land, improvement: t.improvement })),
       ownership: d.ownership || [], mortgages: d.mortgages || [],
       street: d.street || '', city: d.city || ''
     };
@@ -971,9 +972,14 @@ function readHomesPage(doc) {
     // Tax paid per year (from the tax history), like Zillow's "Tax paid" chart
     const taxPts = m.taxHistory.filter((t) => isNum(t.tax) && isNum(+t.year))
       .map((t) => ({ t: Date.UTC(+t.year, 0, 1), v: t.tax })).sort((x, y) => x.t - y.t);
-    const chart = taxPts.length > 1
-      ? `<div class="vp-ctabs" role="tablist"><button type="button" class="on" data-vp-chart="value">Home values</button><button type="button" data-vp-chart="tax">Tax paid</button></div>
-         <div data-vp-pane="value">${valueChart}</div><div data-vp-pane="tax" hidden>${chartSVG(taxPts, chartW, 260, th.chart, 'Property tax paid by year')}</div>`
+    const assessPts = m.taxHistory.filter((t) => isNum(t.value) && t.value > 0 && isNum(+t.year))
+      .map((t) => ({ t: Date.UTC(+t.year, 0, 1), v: t.value })).sort((x, y) => x.t - y.t);
+    const panes = [['value', 'Home values', valueChart]];
+    if (taxPts.length > 1) panes.push(['tax', 'Tax paid', chartSVG(taxPts, chartW, 260, th.chart, 'Property tax paid by year')]);
+    if (assessPts.length > 1) panes.push(['assess', 'Assessment', chartSVG(assessPts, chartW, 260, th.chart, 'Tax assessment by year')]);
+    const chart = panes.length > 1
+      ? `<div class="vp-ctabs" role="tablist">${panes.map(([k, l], i) => `<button type="button" class="${i ? '' : 'on'}" data-vp-chart="${k}">${l}</button>`).join('')}</div>
+         ${panes.map(([k, , html], i) => `<div data-vp-pane="${k}"${i ? ' hidden' : ''}>${html}</div>`).join('')}`
       : valueChart;
 
     // one card, one look: icon + label + value for every fact
@@ -1007,17 +1013,20 @@ function readHomesPage(doc) {
     // Price history and public tax history as compact tables (like Zillow's), each scrolling in its own box
     const pctTag = (r) => isNum(r) && r !== 0 ? ` <span class="vp-pct ${r > 0 ? 'up' : 'down'}">${r > 0 ? '+' : '−'}${Math.abs(r * 100).toFixed(1).replace(/\.0$/, '')}%</span>` : '';
     // fill in tax/assessment % changes when the site doesn't give them (vs. the year before)
+    const hasLand = m.taxHistory.some((t) => isNum(t.land) || isNum(t.improvement));
     const taxRows = m.taxHistory.slice().sort((x, y) => (+y.year || 0) - (+x.year || 0)).map((t, i, arr) => {
       const prev = arr[i + 1];
-      const tr = isNum(t.taxRate) ? t.taxRate : (prev && isNum(t.tax) && isNum(prev.tax) && prev.tax ? (t.tax - prev.tax) / prev.tax : null);
-      const vr = isNum(t.valueRate) ? t.valueRate : (prev && isNum(t.value) && isNum(prev.value) && prev.value ? (t.value - prev.value) / prev.value : null);
-      return `<tr><td>${esc(t.year)}</td><td>${isNum(t.tax) ? money(t.tax) + pctTag(tr) : '--'}</td><td>${isNum(t.value) ? money(t.value) + pctTag(vr) : '--'}</td></tr>`;
+      // our own year-over-year % when the site gives none; hidden above 100% (exemptions/record quirks, e.g. $27 -> $1,954)
+      const calc = (a, b) => (isNum(a) && isNum(b) && b > 0 && Math.abs((a - b) / b) <= 1) ? (a - b) / b : null;
+      const tr = isNum(t.taxRate) ? t.taxRate : (prev ? calc(t.tax, prev.tax) : null);
+      const vr = isNum(t.valueRate) ? t.valueRate : (prev ? calc(t.value, prev.value) : null);
+      return `<tr><td>${esc(t.year)}</td><td>${isNum(t.tax) ? money(t.tax) + pctTag(tr) : '--'}</td><td>${isNum(t.value) ? money(t.value) + pctTag(vr) : '--'}</td>${hasLand ? `<td>${isNum(t.land) ? money(t.land) : '--'}</td><td>${isNum(t.improvement) ? money(t.improvement) : '--'}</td>` : ''}</tr>`;
     }).join('');
     const priceRows = m.priceHistory.map((e) => `<tr><td>${esc(day(e.date))}</td><td>${esc(e.event || '')}</td>
       <td>${isNum(e.price) ? money(e.price) + pctTag(e.rate) : '--'}${isNum(e.ppsf) ? `<div class="vp-sub">${money(e.ppsf)}/sqft</div>` : ''}${e.source ? `<div class="vp-sub">Source: ${esc(e.source)}</div>` : ''}</td></tr>`).join('');
     const histTables = (priceRows || taxRows) ? `<div class="vp-hist">
       <div><h4 class="vp-sec">Price history</h4>${priceRows ? `<div class="vp-scroll"><table class="vp-t2"><thead><tr><th>Date</th><th>Event</th><th>Price</th></tr></thead><tbody>${priceRows}</tbody></table></div>` : '<div class="vp-na">No price history.</div>'}</div>
-      <div><h4 class="vp-sec">Public tax history</h4>${taxRows ? `<div class="vp-scroll"><table class="vp-t2"><thead><tr><th>Year</th><th>Property taxes</th><th>Tax assessment</th></tr></thead><tbody>${taxRows}</tbody></table></div>` : '<div class="vp-na">No tax history.</div>'}</div>
+      <div><h4 class="vp-sec">Public tax history</h4>${taxRows ? `<div class="vp-scroll"><table class="vp-t2"><thead><tr><th>Year</th><th>Property taxes</th><th>Tax assessment</th>${hasLand ? '<th>Land</th><th>Improvement</th>' : ''}</tr></thead><tbody>${taxRows}</tbody></table></div>` : '<div class="vp-na">No tax history.</div>'}</div>
     </div>` : '';
 
     const facts = section('Highlights', hlItems) + section('Home details', detItems);
