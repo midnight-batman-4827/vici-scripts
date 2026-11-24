@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      10.5
+// @version      10.6
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -791,7 +791,9 @@ function readHomesPage(doc) {
     .vp-side-scroll > .vp-sec:first-child{border-top:0;padding-top:0;margin-top:0}
     .vp-owned{font-size:12px;font-weight:600;color:var(--muted);margin-top:3px}
     .vp-owned.short{color:#b45309}
-    .vp-own{max-height:220px}
+    .vp-own{max-height:250px}
+    .vp-own-wrap{margin-top:18px}
+    .vp-own-wrap .vp-sec{border-top:0;padding-top:0;margin-top:0}
     .vp-own table.vp-t2 th, .vp-own table.vp-t2 td{padding:6px 8px;font-size:12px}
     .vp-count{font-size:13px;font-weight:600;color:var(--muted);margin-left:8px}
     .vp-gal{width:fit-content;max-width:100%}
@@ -1005,7 +1007,7 @@ function readHomesPage(doc) {
     </div>` : '';
 
     const factsTitle = `Home highlights for ${esc(m.street || a.street)}`;
-    const factsBody = (facts + ownership) || '<div class="vp-na">No home facts listed.</div>';
+    const factsBody = facts || '<div class="vp-na">No home facts listed.</div>';
     // photos on the left, Home highlights as a vertical panel beside them (same height, scrolls inside)
     const top = gallery
       ? `<div class="vp-top-row">${gallery}<div class="vp-card vp-side"><h3>${factsTitle}</h3><div class="vp-side-scroll">${factsBody}</div></div></div>`
@@ -1015,7 +1017,7 @@ function readHomesPage(doc) {
         <div class="vp-card"><h3>Sale &amp; value</h3>${tiles}${lead}</div>
         <div class="vp-card"><h3>Value over time</h3>${chart}</div>
       </div>
-      ${histTables ? `<div class="vp-card" style="margin-top:14px"><h3>Price &amp; tax history</h3>${histTables}</div>` : ''}`;
+      ${histTables || ownership ? `<div class="vp-card" style="margin-top:14px"><h3>${ownership ? 'Price, tax &amp; ownership history' : 'Price &amp; tax history'}</h3>${histTables}${ownership ? `<div class="vp-own-wrap">${ownership}</div>` : ''}</div>` : ''}`;
   }
 
   // --- the tabs next to SCRIPT 2 ---
