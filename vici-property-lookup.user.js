@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      8.8
+// @version      8.9
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -509,7 +509,7 @@
     .vprop-tab.active{background:currentColor}
     .vprop-tab.active span.lbl{color:#fff}
 
-    #vprop-screen{position:absolute;z-index:9000;box-sizing:border-box;overflow:auto;display:none;padding:0 0 28px;
+    #vprop-screen{position:absolute;z-index:9000;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;display:none;padding:0 0 28px;
       background:var(--bg);color:var(--ink);font:14px/1.45 var(--font)}
     #vprop-screen.open{display:block}
     #vprop-screen *{box-sizing:border-box}
@@ -775,13 +775,13 @@
   // Is this element really showing (not hidden, and not covered by Vici's login/logout/pause boxes)?
   function onScreen(el) {
     const r = el.getBoundingClientRect();
-    if (!r.width || !r.height || r.bottom < 0 || r.right < 0) return false;
+    if (!r.width || !r.height) return false;            // scrolled out of view still counts as showing
     for (let e = el; e && e !== document.body; e = e.parentElement) {
       const cs = getComputedStyle(e);
       if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return false;
     }
     const x = r.left + r.width / 2, y = r.top + r.height / 2;
-    if (x > window.innerWidth || y > window.innerHeight) return true; // scrolled off – can't test cover
+    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return true; // scrolled off – can't test cover
     const hit = document.elementFromPoint(x, y);
     const own = el.closest('a') || el;
     return !!hit && (own === hit || own.contains(hit) || hit.contains(own));
