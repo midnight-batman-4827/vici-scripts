@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      9.4
+// @version      9.5
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -516,15 +516,15 @@
   css.textContent = `
 
     #vprop-tabbar{position:absolute;z-index:10001;display:flex;gap:4px;white-space:nowrap}
-    .vprop-tab .vp-fav{vertical-align:middle;margin-right:4px;border-radius:4px;position:relative;top:-1px}
+    .vprop-tab .vp-fav{display:block;border-radius:4px}
     .vp-sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-    .vprop-tab{position:relative}
+    .vprop-tab{position:relative;display:inline-flex!important;align-items:center;gap:5px;padding:0 6px!important}
     .vp-brand{display:inline-flex;align-items:center;gap:8px}
     .vp-brand .vp-fav{border-radius:4px}
     .vprop-tab{display:inline-block;cursor:pointer;user-select:none;font:bold 14px Arial,sans-serif;background:#e4e4e4;
       padding:0 8px;box-sizing:border-box;border-radius:2px}
     .vprop-tab:hover{background:#d4d4d4}
-    .vprop-tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:5px;vertical-align:middle;background:#9aa4b2}
+    .vprop-tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:0;flex-shrink:0;background:#9aa4b2}
     .vprop-tab.ready .dot{background:#1aa33c}
     .vprop-tab.fail .dot{background:#d08a00}
     .vprop-tab.active{background:currentColor}
@@ -811,7 +811,7 @@
         t.setAttribute('role', 'button');
         t.tabIndex = 0;
         t.style.color = s.color;
-        t.innerHTML = `${favicon(s, 20)}<span class="lbl vp-sr">${esc(s.label)}</span><span class="dot"></span>`;
+        t.innerHTML = `${favicon(s, 32)}<span class="lbl vp-sr">${esc(s.label)}</span><span class="dot"></span>`;
         t.setAttribute('aria-label', s.label);
         t.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleScreen(s.key); });
         t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleScreen(s.key); } });
@@ -862,7 +862,12 @@
     const r = ref.getBoundingClientRect();
     const h = Math.max(20, Math.min(r.height || 24, 34));
     Object.assign(tabBar.style, { left: r.right + 6 + window.scrollX + 'px', top: r.top + window.scrollY + 'px', height: h + 'px' });
-    tabBar.querySelectorAll('.vprop-tab').forEach((t) => { t.style.height = h + 'px'; t.style.lineHeight = h + 'px'; });
+    const icon = Math.max(16, h - 6);   // icon fills the tab, 3px breathing room top and bottom
+    tabBar.querySelectorAll('.vprop-tab').forEach((t) => {
+      t.style.height = h + 'px';
+      const img = t.querySelector('.vp-fav');
+      if (img) { img.width = icon; img.height = icon; }
+    });
     return true;
   }
 
