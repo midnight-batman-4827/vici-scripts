@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      8.5
+// @version      8.6
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -263,7 +263,7 @@
       return full && full.url ? { full: full.url, thumb: thumb.url, caption: ph.caption || '' } : null;
     }).filter(Boolean);
     return {
-      photos, streetViewOnly: photos.length > 0 && photos.every((x) => /streetview/i.test(x.full)),
+      photos, streetViewOnly: photos.length > 0 && photos.every((x) => /streetview/i.test(x.full)), estimateLabel: 'Zestimate',
       status: nice(p.homeStatus),
       soldDate: sale ? (sale.date || sale.time) : p.dateSold, soldPrice: sale ? sale.price : p.lastSoldPrice,
       estimate: estimate || (history && history.length ? history[history.length - 1].v : null),
@@ -281,6 +281,51 @@
       taxHistory: (p.taxHistory || []).map((t) => ({ year: t.time ? new Date(t.time).getUTCFullYear() : '', tax: t.taxPaid, value: t.value })),
       street: p.streetAddress || (p.address && p.address.streetAddress) || '',
       city: (p.address && p.address.city) || p.city || ''
+    };
+  }
+
+  // Trulia's page keeps everything under props.homeDetails (mapped from a real Trulia page)
+  function fromTrulia(hd) {
+    const attrs = (list) => (list || []).map((x) => [x.formattedName || '', x.formattedValue || '']).filter(([, v]) => v);
+    const groups = [];
+    (hd.features && hd.features.categories || []).forEach((c) => {
+      if ((c.attributes || []).length) groups.push([c.formattedName || 'Details', attrs(c.attributes)]);
+      (c.categories || []).forEach((sub) => groups.push([sub.formattedName || c.formattedName || 'Details', attrs(sub.attributes)]));
+    });
+    const hi = {};
+    attrs(hd.features && hd.features.highlightedInfoAttributes).forEach(([k, v]) => { hi[k.toLowerCase()] = v; });
+    const all = {};
+    groups.forEach(([, rows]) => rows.forEach(([k, v]) => { if (k) all[k.toLowerCase()] = v; }));
+    const pr = (x) => x && (isNum(x.price) ? x.price : parseMoney(x.formattedPrice));
+    const series = hd.homeValue && hd.homeValue.history && hd.homeValue.history.series || [];
+    const home = series.find((x) => /this home/i.test(x.name || '')) || series[0];
+    const history = home && home.points ? home.points.map((q) => ({ t: q.timestamp, v: q.value }))
+      .filter((q) => isNum(q.t) && isNum(q.v) && q.t <= Date.now() + 864e5).sort((a, b) => a.t - b.t) : null;
+    const st = hd.currentStatus || {};
+    const photos = (hd.media && hd.media.photos || []).map((ph) => ph && ph.url && (ph.url.large || ph.url.medium)
+      ? { full: ph.url.large || ph.url.medium, thumb: ph.url.thumbnail || ph.url.smallSrc || ph.url.large, caption: ph.caption || '' } : null).filter(Boolean);
+    const sqft = parseMoney(hd.floorSpace && hd.floorSpace.formattedDimension);
+    const ov = hd.homeValue && hd.homeValue.overview || {};
+    const delta = (d) => d && d.formattedValue ? { txt: d.formattedValue, pct: d.formattedPercent || '', up: /up/i.test(d.direction || '') } : null;
+    const changes = { month: delta(ov.sinceLastMonth), year: delta(ov.sinceLastYear), sale: delta(ov.sinceLastSale) };
+    return {
+      photos, streetViewOnly: false, changes,
+      estimateLabel: (hd.price && hd.price.typeDescription) || 'Trulia Estimate',
+      status: st.label || '',
+      soldDate: hd.lastSold && hd.lastSold.soldDate, soldPrice: hd.lastSold && pr(hd.lastSold.soldPrice),
+      estimate: pr(hd.estimatedValue) || (st.isActiveForSale ? null : pr(hd.price)),
+      listPrice: st.isActiveForSale ? pr(hd.price) : null,
+      history: history && history.length > 1 ? history : null,
+      beds: hd.bedrooms && hd.bedrooms.value, baths: hd.bathrooms && hd.bathrooms.value, sqft,
+      yearBuilt: hi['year built'] || all['year built'] || '', type: hi['property type'] || all['property type'] || '',
+      lot: (hd.lotSize && hd.lotSize.formattedDimension) || all['lot area'] || '',
+      parking: all['parking spaces'] ? all['parking spaces'] + ' spaces' : (all['parking'] || ''),
+      hoa: all['hoa fee'] || all['hoa'] || '', rent: hd.estimatedRent && hd.estimatedRent.formattedPrice || '',
+      county: '',
+      groups: groups.filter(([, rows]) => rows.length),
+      priceHistory: (hd.priceHistory || []).map((e) => ({ date: e.date, event: words(String(e.event || '')).replace(/\bPrice Change\b/i, 'Price change'), price: pr(e.price) })),
+      taxHistory: (hd.taxes && hd.taxes.history || []).map((t) => ({ year: t.year, tax: pr(t.taxValue), value: pr(t.totalAssessment) })),
+      street: (hd.location && (hd.location.streetAddress || hd.location.formattedLocation)) || '', city: (hd.location && hd.location.city) || ''
     };
   }
 
@@ -333,14 +378,15 @@
     if (key === 'realtor' && !c.realtor) return done({ state: 'nomatch' });
 
     const r = await gmGet(c.sites[key].url, 'text/html');
-    if (r.status === 403 || r.status === 429 || /px-captcha|Access to this page has been denied|press & hold|kasada|captcha/i.test(r.text.slice(0, 8000))) return done({ state: 'blocked' });
+    if (r.status === 403 || r.status === 429 || /px-captcha|Access to this page has been denied|press & hold|kasada|captcha/i.test(r.text.slice(0, 8000))) return done({ state: 'blocked', code: r.status });
     const data = r.status === 200 ? nextData(r.text) : null;
-    if (!data) return done({ state: 'error' });
+    if (!data) return done({ state: 'error', code: r.status ? r.status + (r.status === 200 ? ', unmapped page' : '') : 'no response' });
 
     let model = null;
     if (key === 'realtor') { const o = findRealtor(data); if (o) model = fromRealtor(o, [data]); }
+    else if (key === 'trulia' && data.props && data.props.homeDetails) model = fromTrulia(data.props.homeDetails);
     else { const p = findProperty(data, c.zillow.zpid); if (p) model = fromZillow(p, [data]); }
-    if (!model) return done({ state: key === 'trulia' ? 'shared' : 'error', raw: data });
+    if (!model) return done({ state: key === 'trulia' ? 'shared' : 'error', code: '200, unmapped page', raw: data });
 
     if ((key === 'zillow' || key === 'trulia') && (!model.history || model.history.length < 2)) {
       c.zHistory = c.zHistory || fetchZillowHistory(c.zillow.zpid);
@@ -360,7 +406,12 @@
   const money = (n) => isNum(n) ? '$' + Math.round(n).toLocaleString() : '';
   const kMoney = (n) => !isNum(n) ? '' : Math.abs(n) >= 1e6 ? '$' + (n / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n);
   const num = (n) => isNum(n) ? Number(n).toLocaleString() : '';
-  const day = (t) => { if (!t) return ''; const d = new Date(typeof t === 'number' ? t : String(t).replace(/-/g, '/')); return isNaN(d) ? String(t) : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
+  const day = (t) => {
+    if (!t) return '';
+    const m = typeof t === 'string' && t.match(/^(\d{4})-(\d{2})-(\d{2})/);   // ISO dates: show the calendar day as written
+    const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : new Date(typeof t === 'number' ? t : String(t));
+    return isNaN(d) ? String(t) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: m ? 'UTC' : undefined });
+  };
   // "$500,000 - $749,999" -> { lo: 500000, hi: 749999 };  "$365,650.00" -> { lo: 365650, hi: 365650 }
   const parseRange = (s) => {
     const nums = (String(s || '').match(/\d[\d,]*(\.\d+)?/g) || []).map((x) => parseFloat(x.replace(/,/g, ''))).filter((n) => n > 0);
@@ -545,7 +596,7 @@
     const z = c ? siteState(c, 'zillow') : {};
     // Realtor.com / Homes.com can't be read: show the shared public records instead, clearly labelled
     const fallback = (why) => z.state === 'ok'
-      ? body(`<div class="vp-banner">${icon('pin')}<div><b>${esc(s.label)} couldn't be read automatically</b> (${why}). Below are this home's public records and estimate from Zillow. Use <b>Open on ${esc(s.label)}</b> for ${esc(s.label)}'s own page.</div></div>` + modelHTML(a, z.model, key, 'Zillow'))
+      ? body(`<div class="vp-banner">${icon('pin')}<div><b>${esc(s.label)} couldn't be read automatically</b> (${why}${st.code ? ` – code ${esc(st.code)}` : ''}). Below are this home's public records and estimate from Zillow. Use <b>Open on ${esc(s.label)}</b> for ${esc(s.label)}'s own page.</div></div>` + modelHTML(a, z.model, key, 'Zillow'))
       : z.state === 'loading' || z.state === 'idle' ? msg('Looking up the property…')
       : msg(`${esc(s.label)} couldn't be read automatically (${why}). Use <b>Open on ${esc(s.label)}</b> above.`);
     switch (st.state) {
@@ -572,11 +623,13 @@
     const est = m.estimate;
     const sinceBuy = est && m.soldPrice ? { amt: est - m.soldPrice, pct: (est - m.soldPrice) / m.soldPrice * 100 } : null;
     const mo = change(m.history, est, 30), yr = change(m.history, est, 365);
-    const pill = (ch, label) => ch ? `<span class="vp-pill ${ch.amt >= 0 ? 'up' : 'down'}">${ch.amt >= 0 ? '↑' : '↓'} ${kMoney(Math.abs(ch.amt))} (${ch.amt >= 0 ? '+' : '−'}${Math.abs(ch.pct).toFixed(1)}%) ${label}</span>` : '';
+    const siteCh = m.changes || {};
+    const pill = (ch, label, sc) => sc ? `<span class="vp-pill ${sc.up ? 'up' : 'down'}">${sc.up ? '↑' : '↓'} ${esc(sc.txt)} (${esc(sc.pct)}) ${label}</span>`
+      : ch ? `<span class="vp-pill ${ch.amt >= 0 ? 'up' : 'down'}">${ch.amt >= 0 ? '↑' : '↓'} ${kMoney(Math.abs(ch.amt))} (${ch.amt >= 0 ? '+' : '−'}${Math.abs(ch.pct).toFixed(1)}%) ${label}</span>` : '';
 
     const hero = `<div class="vp-hero">
-      <div><div class="lbl">${esc(th.heading)} estimate</div><div class="big">${esc(money(est) || '—')}</div></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;padding-bottom:4px">${pill(mo, 'this month')}${pill(yr, 'this year')}${pill(sinceBuy, 'since purchase')}</div>
+      <div><div class="lbl">${esc(m.estimateLabel || th.heading + ' estimate')}</div><div class="big">${esc(money(est) || '—')}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding-bottom:4px">${pill(mo, 'this month', siteCh.month)}${pill(yr, 'this year', siteCh.year)}${pill(sinceBuy, 'since purchase', siteCh.sale)}</div>
     </div>`;
 
     const tiles = `
@@ -616,17 +669,26 @@
 
     const GROUP_ICON = { 'Interior': 'bed', 'Heating & Cooling': 'home', 'Exterior': 'tree', 'Parking & Garage': 'car',
       'Lot & Utilities': 'ruler', 'Community & HOA': 'people', 'At a glance': 'home' };
-    const seen = new Set(['bedrooms', 'lot size', 'parking capacity']); // already shown above
+    const groupIcon = (g) => /park|garage/i.test(g) ? 'car' : /lot/i.test(g) ? 'ruler' : /exterior|roof/i.test(g) ? 'tree'
+      : /community|hoa/i.test(g) ? 'people' : /year/i.test(g) ? 'cal' : /level|floor|bed|interior/i.test(g) ? 'bed' : 'home';
+    const seen = new Set(['bedrooms', 'lot size', 'parking capacity', 'year built', 'property type', 'living area', 'lot area', 'parking spaces', 'price/sqft']); // already shown above
     const detItems = [];
-    m.groups.forEach(([g, rows]) => rows.forEach(([k, v]) => {
+    m.groups.map(([g, rows]) => {
+      // value-only facts (e.g. Dishwasher, Disposal, Microwave) become one line under the group name
+      const named = rows.filter(([k]) => k), bare = rows.filter(([k]) => !k).map(([, v]) => v);
+      return (bare.length ? named.concat([['', bare.join(', ')]]) : named);
+    }).forEach((rows, gi) => rows.forEach(([k, v]) => {
+      const g = m.groups[gi][0];
       const label = k || g;
       if (seen.has(label.toLowerCase())) return;
       seen.add(label.toLowerCase());
-      detItems.push(item(GROUP_ICON[g] || 'home', label, v));
+      detItems.push(item(GROUP_ICON[g] || groupIcon(g), label, v));
     }));
 
     const saleItems = m.priceHistory.slice(0, 12).map((e) => item('tag', `${e.event || 'Event'} · ${day(e.date)}`, money(e.price) || '—'));
-    const taxItems = m.taxHistory.slice(0, 12).map((t) => item('dollar', `${t.year} property tax`, money(t.tax) || '—', t.value ? 'Assessed ' + money(t.value) : ''));
+    const taxItems = m.taxHistory.slice(0, 12).map((t) => isNum(t.tax)
+      ? item('dollar', `${t.year} property tax`, money(t.tax), t.value ? 'Assessed ' + money(t.value) : '')
+      : item('dollar', `${t.year} tax assessment`, money(t.value) || '—'));
 
     const facts = section('Highlights', hlItems) + section('Home details', detItems) + section('Price history', saleItems) + section('Tax history', taxItems);
 
