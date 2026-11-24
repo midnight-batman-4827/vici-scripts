@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      9.2
+// @version      9.3
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @grant        GM_xmlhttpRequest
@@ -125,20 +125,23 @@
   const google = (site, a) => 'https://www.google.com/search?q=' + encodeURIComponent(`site:${site} ${a.street} ${a.city} ${a.state} ${a.zip}`);
   const zSlug = (z) => dash(`${z.line} ${z.city} ${z.state} ${z.zip}`);
 
+  // each site's own browser-tab icon, via Google's public favicon service
+  const favicon = (s, px) => `<img class="vp-fav" src="https://www.google.com/s2/favicons?domain=${s.domain}&sz=${px * 2}" width="${px}" height="${px}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">`;
+
   const SITES = [
-    { key: 'zillow', label: 'Zillow', color: '#006aff',
+    { key: 'zillow', domain: 'zillow.com', label: 'Zillow', color: '#006aff',
       url: (a, c) => c.zillow ? `https://www.zillow.com/homedetails/${zSlug(c.zillow)}/${c.zillow.zpid}_zpid/`
         : `https://www.zillow.com/homes/${dash(a.street)},-${dash(a.city)},-${a.state}-${a.zip}_rb/`,
       exact: (c) => !!c.zillow },
-    { key: 'realtor', label: 'Realtor', color: '#d92228',
+    { key: 'realtor', domain: 'realtor.com', label: 'Realtor', color: '#d92228',
       url: (a, c) => c.realtor
         ? `https://www.realtor.com/realestateandhomes-detail/${dash(c.realtor.line)}_${dash(c.realtor.city)}_${c.realtor.state}_${c.realtor.zip}_M${c.realtor.id.slice(0, 5)}-${c.realtor.id.slice(5)}`
         : google('realtor.com', a),
       exact: (c) => !!c.realtor },
-    { key: 'homes', label: 'Homes.com', color: '#f05a28',
+    { key: 'homes', domain: 'homes.com', label: 'Homes.com', color: '#f05a28',
       url: (a, c) => google('homes.com', c.zillow ? { street: c.zillow.line, city: c.zillow.city, state: c.zillow.state, zip: c.zillow.zip } : a),
       exact: () => false },
-    { key: 'trulia', label: 'Trulia', color: '#007882',
+    { key: 'trulia', domain: 'trulia.com', label: 'Trulia', color: '#007882',
       url: (a, c) => c.zillow ? `https://www.trulia.com/home/${zSlug(c.zillow).toLowerCase()}-${c.zillow.zpid}` : google('trulia.com', a),
       exact: (c) => !!c.zillow }
   ];
@@ -513,6 +516,9 @@
   css.textContent = `
 
     #vprop-tabbar{position:absolute;z-index:10001;display:flex;gap:4px;white-space:nowrap}
+    .vprop-tab .vp-fav{vertical-align:middle;margin-right:6px;border-radius:3px;position:relative;top:-1px}
+    .vp-brand{display:inline-flex;align-items:center;gap:8px}
+    .vp-brand .vp-fav{border-radius:4px}
     .vprop-tab{display:inline-block;cursor:pointer;user-select:none;font:bold 14px Arial,sans-serif;background:#e4e4e4;
       padding:0 8px;box-sizing:border-box;border-radius:2px}
     .vprop-tab:hover{background:#d4d4d4}
@@ -617,7 +623,7 @@
     const s = SITES.find((x) => x.key === key);
     const st = c ? siteState(c, key) : { state: 'idle' };
     const openBtn = st.url ? `<a class="vp-open" href="${esc(st.url)}" target="_blank" rel="noopener">Open on ${esc(s.label)} ↗</a>` : '';
-    const top = `<div class="vp-top"><span class="vp-brand">${esc(s.label)}</span><span class="addr">${esc(a.full)}</span><span class="sp"></span>
+    const top = `<div class="vp-top"><span class="vp-brand">${favicon(s, 24)}${esc(s.label)}</span><span class="addr">${esc(a.full)}</span><span class="sp"></span>
       ${openBtn}</div>`;
     if (a.missing.length) return `<div class="vp-body"><div class="vp-msg">No property yet. The lead needs: ${esc(a.missing.join(', '))}.</div></div>`;
     const body = (h) => top + `<div class="vp-body">${h}</div>`;
@@ -803,7 +809,7 @@
         t.setAttribute('role', 'button');
         t.tabIndex = 0;
         t.style.color = s.color;
-        t.innerHTML = `<span class="lbl">${esc(s.label.toUpperCase())}</span><span class="dot"></span>`;
+        t.innerHTML = `${favicon(s, 16)}<span class="lbl">${esc(s.label.toUpperCase())}</span><span class="dot"></span>`;
         t.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleScreen(s.key); });
         t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleScreen(s.key); } });
         tabBar.appendChild(t);
