@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      14.3
+// @version      14.4
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -302,6 +302,10 @@ function readHomesPage(doc) {
       const { pv } = frame(table, 'Load leads', '<p>Pick the file and the list. You match the columns on the next screen.</p>');
       table.classList.add('mu-up');
       fileIn.closest('tr').classList.add('mu-file');
+      // Mortgageusa's usual settings, picked for you each time (you can still change them before Submit)
+      const pick = (name, test) => { const sel = document.querySelector(`select[name=${name}]`); const o = sel && [...sel.options].find(test); if (o) sel.value = o.value, o.selected = true; };
+      pick('phone_code_override', (o) => /^\s*1\s*-\s*USA\s*$/i.test(o.textContent));
+      pick('postalgmt', (o) => o.value === 'POSTAL');
       const show = (p, msg) => {
         pv.innerHTML = !p ? `<div class="mu-head"><h1>Your file</h1></div><div class="mu-empty">${msg || 'Pick a file to see what\'s in it.'}</div>`
           : `<div class="mu-head"><h1>Your file</h1>${chipsFor(p, `<span class="mu-chip"><b>${p.headers.length}</b> columns</span>`)}</div>
