@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      13.4
+// @version      13.5
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1445,7 +1445,7 @@ function readHomesPage(doc) {
   //  layout playground export. To bring a hidden piece back, change its line here.
   // =====================================================================
   // Who gets the new layout: Vici user IDs. Empty list = everyone.
-  const LAYOUT_USERS = ['110'];
+  const LAYOUT_USERS = [];   // everyone
   let LAYOUT_ON = false, layoutUserChecked = false;
   function layoutAllowed() {
     if (layoutUserChecked) return LAYOUT_ON;
