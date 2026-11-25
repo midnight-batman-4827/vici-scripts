@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      16.9
+// @version      17.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -40,7 +40,8 @@
   // Agent screen with the opening animation on: hidden from the first moment too, so Vici's screen (and its
   // green in-group box) never shows before the animation. The login screen is shown again right away.
   let AGC_COVER = false;
-  try { AGC_COVER = /\/agc\/vicidial\.php/.test(location.pathname) && GM_getValue('vpView', 'agency') !== 'classic' && GM_getValue('vpIntro', true) !== false; } catch (e) {}
+  const TOP = (() => { try { return window.top === window.self; } catch (e) { return false; } })();   // not Vici's small frames
+  try { AGC_COVER = TOP && /\/agc\/vicidial\.php/.test(location.pathname) && GM_getValue('vpView', 'agency') !== 'classic' && GM_getValue('vpIntro', true) !== false; } catch (e) {}
   let reveal = () => {};
   if (LL_PAGE || ADMIN_PAGE || AGC_COVER) {
     const ph = document.createElement('style');
@@ -231,7 +232,7 @@ function readHomesPage(doc) {
   if (ADMIN_PAGE) { let r = false; try { if (!stepAside()) r = adminUI(); } finally { if (r !== 'redirect') reveal(); } return; }
   // Agent screen: Agency View (everything below) or Classic Vici (exactly Vici as if this script were off).
   // Chosen per PC from the menu by Log out or on the login screen; it takes effect at the next login.
-  if (/\/agc\//.test(location.pathname)) {
+  if (/\/agc\//.test(location.pathname) && TOP) {
     if (stepAside()) reveal();
     else {
       const classic = GM_getValue('vpView', 'agency') === 'classic';
@@ -257,6 +258,10 @@ function readHomesPage(doc) {
     };
     draw();
     document.body.appendChild(box);
+    // SUBMIT: the paper cover goes up right away, so "Logging in…" and Vici's in-between pages don't show
+    const go = () => { if (GM_getValue('vpView', 'agency') !== 'classic' && GM_getValue('vpIntro', true)) { introCover(); introWhy('cover on at SUBMIT'); } };
+    document.addEventListener('submit', go, true);
+    document.addEventListener('click', (e) => { const b = e.target.closest('input[type=submit],input[type=button],button,a'); if (b && /^\s*submit\s*$/i.test(b.value || b.textContent || '')) go(); }, true);
     return true;
   }
 
