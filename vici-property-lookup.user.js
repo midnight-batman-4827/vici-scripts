@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.4
+// @version      15.5
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1913,6 +1913,10 @@ function readHomesPage(doc) {
     #vprop-screen{position:absolute;z-index:9000;box-sizing:border-box;overflow:auto;overscroll-behavior:contain;display:none;padding:0 0 28px;
       background:var(--bg);color:var(--ink);font:14px/1.45 var(--font)}
     #vprop-screen.open{display:block}
+    #vprop-screen.vp-full{border-top:1px solid #d6dce4;box-shadow:0 -2px 10px rgba(0,0,0,.08)}
+    #vprop-screen.vp-full .vp-body{max-width:1500px;margin:0 auto}
+    #vprop-screen.vp-full .vp-top{padding-left:max(22px,calc((100% - 1456px) / 2));padding-right:max(22px,calc((100% - 1456px) / 2))}
+    .vp-top .vp-back{font:600 13px var(--font);border:1px solid var(--border);background:var(--card);color:var(--ink);border-radius:var(--radius);padding:8px 14px;cursor:pointer}
     #vprop-screen *{box-sizing:border-box}
     .vp-top{display:flex;align-items:center;gap:14px;padding:12px 22px;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:2}
     .vp-brand{font-weight:800;font-size:22px;color:var(--accent);letter-spacing:-.02em}
@@ -2030,8 +2034,9 @@ function readHomesPage(doc) {
     const s = SITES.find((x) => x.key === key);
     const st = c ? siteState(c, key) : { state: 'idle' };
     const openBtn = st.url ? `<a class="vp-open" href="${esc(st.url)}" target="_blank" rel="noopener">Open on ${esc(s.label)} ↗</a>` : '';
+    const back = LAYOUT_ON ? '<button type="button" class="vp-back" data-vp-close="1">\u2715 Back to the call</button>' : '';
     const top = `<div class="vp-top"><span class="vp-brand">${favicon(s, 24)}${esc(s.label)}</span><span class="addr">${esc(a.full)}</span><span class="sp"></span>
-      ${openBtn}</div>`;
+      ${openBtn}${back}</div>`;
     if (a.missing.length) return `<div class="vp-body"><div class="vp-msg">No property yet. The lead needs: ${esc(a.missing.join(', '))}.</div></div>`;
     const body = (h) => top + `<div class="vp-body">${h}</div>`;
     const msg = (t) => body(`<div class="vp-msg">${t}</div>`);
@@ -2263,7 +2268,7 @@ function readHomesPage(doc) {
   let screen = null, openKey = null, lastScreenKey = '';
 
   function findScriptTab() {
-    const els = [...document.querySelectorAll('a, td, span, div, b, font, img')].filter((e) => !e.closest('#vprop-screen, .vprop-tab'));
+    const els = [...document.querySelectorAll('a, td, span, div, b, font, img')].filter((e) => !e.closest('#vprop-screen, .vprop-tab, #vl-script, #vl-team'));
     const isTab = (e, re) => e.tagName === 'IMG' ? re.test(e.alt || '') || re.test(e.src || '')
       : e.children.length === 0 && re.test((e.textContent || '').trim());
     return els.filter((e) => isTab(e, /^SCRIPT\s*2$|script_?2|script2/i)).pop() ||
@@ -2319,6 +2324,16 @@ function readHomesPage(doc) {
   // Tabs only show on the logged-in agent screen: Vici's SCRIPT tab and the lead form are visible
   function agentScreenUp(ref) {
     const addr1 = field('address1');
+    if (LAYOUT_ON && byId('vl-form')) {
+      // new layout: the property tabs sit where the (hidden) SCRIPT tabs were, so check Vici's tab row
+      // just right of them is not covered by one of Vici's boxes (pause, dispo, login…)
+      const row = byId('Tabs');
+      if (!ref || !addr1 || !row || document.documentElement.classList.contains('vl-takeover')) return false;
+      const x = L.tabs[0] + (tabBar ? tabBar.offsetWidth : 200) + 30 - window.scrollX, y = 30 - window.scrollY;
+      if (x < 0 || y < 0 || x > window.innerWidth) return true;
+      const hit = document.elementFromPoint(x, y);
+      return !hit || row.contains(hit) || hit === document.body || hit === document.documentElement;
+    }
     return !!(ref && onScreen(ref) && addr1);
   }
 
@@ -2331,8 +2346,10 @@ function readHomesPage(doc) {
     }
     tabBar.style.display = '';
     const r = ref.getBoundingClientRect();
-    const h = Math.max(20, Math.min(r.height || 24, 34));
-    Object.assign(tabBar.style, { left: r.right + 6 + window.scrollX + 'px', top: r.top + window.scrollY + 'px', height: h + 'px' });
+    const pinned = LAYOUT_ON && byId('vl-form');   // new layout: SCRIPT tabs are hidden, the property tabs take their place
+    const h = pinned ? L.tabs[2] : Math.max(20, Math.min(r.height || 24, 34));
+    Object.assign(tabBar.style, pinned ? { left: L.tabs[0] + 'px', top: L.tabs[1] + 'px', height: h + 'px' }
+      : { left: r.right + 6 + window.scrollX + 'px', top: r.top + window.scrollY + 'px', height: h + 'px' });
     const icon = Math.max(16, h - 6);   // icon fills the tab, 3px breathing room top and bottom
     tabBar.querySelectorAll('.vprop-tab').forEach((t) => {
       t.style.height = h + 'px';
@@ -2344,6 +2361,12 @@ function readHomesPage(doc) {
 
   // cover the same area the SCRIPT screens use
   function placeScreen() {
+    if (LAYOUT_ON && byId('vl-form')) {   // new layout: the property page is the only thing on screen (below the tabs)
+      const top = Math.round(tabBar.getBoundingClientRect().bottom + 4);
+      Object.assign(screen.style, { position: 'fixed', left: '0px', top: top + 'px', width: window.innerWidth + 'px', height: (window.innerHeight - top) + 'px' });
+      screen.classList.add('vp-full');
+      return;
+    }
     const sp = document.getElementById('ScriptPanel');
     const r = sp && sp.getBoundingClientRect();
     let left, top, width, height;
@@ -2363,10 +2386,12 @@ function readHomesPage(doc) {
   }
 
   function openScreen(key) {
+    if (byId('vl-script') && byId('vl-script').classList.contains('big')) scriptBig(false);
     if (!screen) {
       screen = document.createElement('div');
       screen.id = 'vprop-screen';
       screen.addEventListener('click', (e) => {
+        if (e.target.closest('[data-vp-close]')) { closeScreen(); return; }
         if (e.target.closest('[data-vp-retry]')) {
           const a = getAddress(), c = cache[a.full];
           if (c) { if (c.retryTimer) { clearTimeout(c.retryTimer); c.retryTimer = null; } retrySites(a, c, true); }
@@ -2396,7 +2421,7 @@ function readHomesPage(doc) {
     }
     openKey = key;
     placeScreen();
-    screen.classList.add('open');
+    screen.classList.add('open'); document.documentElement.classList.add('vl-big');
     Object.keys(tabs).forEach((k) => tabs[k].classList.toggle('active', k === key));
     const a = getAddress();
     if (!a.missing.length) { const c = lookup(a); if (c.done) loadSite(a, c, key); }
@@ -2422,6 +2447,7 @@ function readHomesPage(doc) {
     openKey = null;
     setTimeout(renderAll, 0);
     if (screen) screen.classList.remove('open');
+    document.documentElement.classList.toggle('vl-big', !!(byId('vl-script') && byId('vl-script').classList.contains('big')));
     Object.keys(tabs).forEach((k) => tabs[k].classList.remove('active'));
   }
   function toggleScreen(key) { openKey === key ? closeScreen() : openScreen(key); }
@@ -2480,6 +2506,10 @@ function readHomesPage(doc) {
     pitch: [916, 100, 626, 605],
     seconds: [1510, 30], liveLight: [1610, 25], groups: [1765, 5],
     agentsList: [1720, 45], agentsLink: [1742, 30], hotkeys: [1724, 556],
+    script: [1554, 100, 354, 605],     // Script panel, right of the pitch sheet (same top and bottom line)
+    right: 1908,                       // right edge for Log out and the call badge
+    logo: [960, 14, 72],               // MortgageUSA logo: centre x, top, height
+    tabs: [8, 17, 32],                 // property tabs: left, top, height (VICIdial logo + SCRIPT tabs are hidden)
     // old separate-button spots (Vici's real buttons, now hidden behind the modern column)
     webform: [10, 160], park: [10, 185], transfer: [10, 210], hangup: [10, 235], dtmf: [10, 265],
     manual: [40, 305], leadsearch: [35, 335], callbacks: [5, 365]
@@ -2619,7 +2649,67 @@ function readHomesPage(doc) {
         html.vl-takeover #AgentViewSpan,html.vl-takeover #AgentViewLinkSpan,html.vl-takeover #webphoneSpan,html.vl-takeover #SecondSspan{visibility:hidden!important}
         html.vl-takeover #vl-pitch{display:none!important}
         #vl-hklist{margin-top:8px;width:166px;box-sizing:border-box;background:#ffeebb;border:1px solid #e3c77a;border-radius:8px;padding:6px 8px;font:12px/1.5 Arial,sans-serif;display:none}
-        #vl-hk.on+#vl-hklist{display:block}`;
+        #vl-hk.on+#vl-hklist{display:block}
+        /* 15.5: VICIdial logo + SCRIPT tabs hidden (kept 1px wide: Vici and the property tabs still use them); MortgageUSA logo top middle */
+        #Tabs img[src*="vdc_tab_script"],#Tabs img[src*="vicidial_admin_web_logo"]{width:1px!important;opacity:.01!important}
+        #Tabs td:has(img[src*="vdc_tab_script"]),#Tabs td:has(img[src*="vicidial_admin_web_logo"]){width:1px!important;max-width:1px!important;padding:0!important}
+        #vl-logo{position:absolute;top:${L.logo[1]}px;left:${L.logo[0]}px;transform:translateX(-50%);height:${L.logo[2]}px;z-index:60;background:#fff;border-radius:10px;padding:2px 10px;box-shadow:0 1px 4px rgba(0,0,0,.15);box-sizing:border-box}
+        html.vl-big #vl-logo{visibility:hidden}
+        /* Vici's own SCRIPT screens stay closed: the script shows in our panel instead */
+        #ScriptPanel,#Script2Panel,#ScriptRefresH,#Script2RefresH,#OtherTabCommentsSpan{visibility:hidden!important}
+        /* Agents View + Hot Keys live in one card (Vici's list keeps running, just not shown) */
+        #AgentViewSpan,#AgentViewLinkSpan,#SecondSspan{visibility:hidden!important}
+        #vl-team{width:${L.card[2]}px;box-sizing:border-box;background:#fff;border:1px solid #dde2e8;border-radius:12px;box-shadow:0 2px 10px rgba(20,30,50,.08);font:12px "Segoe UI",Arial,sans-serif;color:#1d2530;display:flex;overflow:hidden}
+        #vl-team *{box-sizing:border-box}
+        #vl-team .ag{flex:1;padding:10px 14px 12px;min-width:0}
+        #vl-team h3{margin:0 0 8px;font:700 11px "Segoe UI",Arial;letter-spacing:.06em;color:#4a5563;display:flex;align-items:center;gap:8px}
+        #vl-team h3 svg{width:14px;height:14px;color:#2563eb}
+        #vl-team .sum{margin-left:auto;display:flex;gap:6px;letter-spacing:0}
+        #vl-team .pill{border-radius:999px;padding:1px 8px;font:600 11px "Segoe UI",Arial}
+        #vl-team .pill.r{background:#dbeafe;color:#1d4ed8}#vl-team .pill.c{background:#dcfce7;color:#137a32}#vl-team .pill.p{background:#fef3c7;color:#b45309}
+        #vl-team .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-height:96px;overflow:auto;scrollbar-width:thin}
+        #vl-team .a{display:flex;align-items:center;gap:7px;border:1px solid #e6eaef;border-radius:8px;padding:5px 8px;min-width:0}
+        #vl-team .a i{width:8px;height:8px;border-radius:50%;flex:none;background:#9aa3ad}
+        #vl-team .a.r i{background:#2563eb}#vl-team .a.c i{background:#1aa33c}#vl-team .a.p i{background:#d97706}
+        #vl-team .a b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        #vl-team .a span{margin-left:auto;font-size:10.5px;color:#6b7686;white-space:nowrap}
+        #vl-team .empty{color:#6b7686;padding:6px 0}
+        #vl-team .hk{width:290px;flex:none;border-left:1px solid #e6eaef;background:#fafbfc;padding:10px 14px 12px}
+        #vl-team .sw{margin-left:auto;display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;font:600 11px "Segoe UI",Arial;letter-spacing:0;color:#2b3a55}
+        #vl-team .sw i{width:32px;height:18px;border-radius:999px;background:#c4ccd6;position:relative;transition:.15s}
+        #vl-team .sw i::after{content:"";position:absolute;left:3px;top:3px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.15s}
+        #vl-team .sw.on i{background:#1aa33c}#vl-team .sw.on i::after{left:17px}
+        #vl-team .keys{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
+        #vl-team .k{display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;color:#2b3a55}
+        #vl-team .k kbd{flex:none;min-width:20px;height:20px;padding:0 4px;border-radius:5px;border:1px solid #c4ccd6;border-bottom-width:2px;background:#fff;display:inline-flex;align-items:center;justify-content:center;font:700 11px Consolas,monospace;color:#1d2530}
+        #vl-team .k em{font-style:normal;overflow:hidden;text-overflow:ellipsis}
+        #vl-team .hk.off .keys{opacity:.45}
+        #vl-team .note{margin-top:6px;font-size:10.5px;color:#6b7686}
+        /* Script panel beside the pitch sheet; "Full screen" fills the window below the tabs */
+        #vl-script{background:#fff;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow:hidden;font:12px "Segoe UI",Arial,sans-serif;color:#1d2530;box-sizing:border-box}
+        #vl-script .bar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid #dde2e8}
+        #vl-script .bar b{font-size:14px;flex:1}
+        #vl-script .bar button{font:600 12px "Segoe UI",Arial;border:1px solid #c4ccd6;background:#fff;color:#1d2530;border-radius:6px;padding:5px 10px;cursor:pointer}
+        #vl-script .tabs{display:flex;gap:4px;padding:8px 12px 0;border-bottom:1px solid #e6eaef}
+        #vl-script .tabs span{padding:5px 10px;font:600 12px "Segoe UI",Arial;color:#6b7686;border-bottom:3px solid transparent;cursor:pointer}
+        #vl-script .tabs span.on{color:#2563eb;border-bottom-color:#2563eb}
+        #vl-script .body{flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:12px 14px 20px;font:13px/1.5 "Segoe UI",Arial,sans-serif}
+        #vl-script .body *{max-width:100%!important;box-sizing:border-box;font-family:"Segoe UI",Arial,sans-serif!important}
+        #vl-script .body *:not(img){height:auto!important;max-height:none!important;overflow:visible!important}
+        #vl-script .body table{width:100%!important;table-layout:fixed;background:transparent!important}
+        #vl-script .body div,#vl-script .body td,#vl-script .body p{width:auto!important;min-width:0!important}
+        #vl-script .body img{height:auto!important}
+        #vl-script .body .empty{color:#6b7686}
+        #vl-script.big{position:fixed!important;left:0!important;right:0;bottom:0;width:auto!important;height:auto!important;z-index:9000!important;border-radius:0;border-top:1px solid #d6dce4}
+        #vl-script.big .bar,#vl-script.big .tabs{padding-left:max(14px,calc((100% - 900px) / 2));padding-right:max(14px,calc((100% - 900px) / 2))}
+        #vl-script.big .body{padding:20px max(14px,calc((100% - 900px) / 2)) 40px;font-size:15px}
+        /* Log out: modern button at the top right; the call badge (with the call time) under it */
+        #vl-groups font{font-size:0!important}
+        #vl-groups a[onclick*="NormalLogout"]{display:inline-flex!important;align-items:center;height:30px;padding:0 14px 0 11px;border-radius:8px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c4252b' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4'/%3E%3Cpath d='M16 17l5-5-5-5'/%3E%3Cpath d='M21 12H9'/%3E%3C/svg%3E") no-repeat 11px center/15px;border:1px solid #f0b4b6;font-size:0!important;text-decoration:none!important;box-shadow:0 1px 2px rgba(0,0,0,.12);cursor:pointer}
+        #vl-groups a[onclick*="NormalLogout"]::after{content:"Log out";font:600 12.5px "Segoe UI",Arial,sans-serif;color:#c4252b;padding-left:20px}
+        #vl-groups a[onclick*="NormalLogout"]:hover{background-color:#fff5f5;border-color:#c4252b}
+        #vl-livebadge .mt{font-variant-numeric:tabular-nums;font-weight:600;padding-left:6px;margin-left:2px;border-left:1px solid rgba(255,255,255,.45)}
+        #vl-livebadge.off .mt{display:none}`;
       document.head.appendChild(st);
     }
 
@@ -2711,6 +2801,9 @@ function readHomesPage(doc) {
     watchTakeover();
     hotKeysSwitch();
     try { pitchSheet(); } catch (e) {}
+    try { scriptPanel(); } catch (e) {}
+    topRight();
+    logo();
     scrollLock();
   }
 
@@ -2870,6 +2963,10 @@ function readHomesPage(doc) {
     const src = img.getAttribute('src') || '';
     const st = /_ON\./i.test(src) ? ['on', 'LIVE CALL'] : /DEAD/i.test(src) ? ['dead', 'CALL HUNG UP'] : ['off', 'NO LIVE CALL'];
     if (b.className !== st[0]) { b.className = st[0]; b.querySelector('span').textContent = st[1]; }
+    // Vici's call seconds, folded into the badge as m:ss
+    let mt = b.querySelector('.mt'); if (!mt) { mt = document.createElement('span'); mt.className = 'mt'; b.appendChild(mt); }
+    const secs = parseInt((byId('SecondSDISP') || {}).textContent, 10) || 0, t = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
+    if (mt.textContent !== t) mt.textContent = t;
     document.documentElement.classList.toggle('vl-nocall', st[0] === 'off');   // "seconds:" only shows during a call
   }
 
@@ -2880,30 +2977,105 @@ function readHomesPage(doc) {
     if (a && on !== hkOn()) a.dispatchEvent(new MouseEvent(on ? 'mouseover' : 'mouseout', { bubbles: true }));
   };
   const hkWanted = () => !!GM_getValue('vpHotKeysOn', false);
+  // ---------- Other agents + Hot Keys: one card under "Property at a glance", always shown ----------
+  // Agents come from Vici's own Agents View list (kept open but hidden); Hot Keys drive Vici's own hot keys.
+  const AG_COL = { '#ADD8E6': 'r', '#D8BFD8': 'c', '#F0E68C': 'p' }, AG_LBL = { r: 'Ready', c: 'On a call', p: 'Paused', o: 'Other' };
   function hotKeysSwitch() {
     if (!byId('hotkeysdisplay')) return;
-    const wrap = box('vl-hkwrap', ...L.hotkeys);
-    if (!byId('vl-hk')) {
-      wrap.innerHTML = '<button type="button" id="vl-hk" title="Click to turn Hot Keys on or off. Your choice is remembered on this PC, even after logging out."><i></i><span>HOT KEYS: OFF</span></button><div id="vl-hklist"></div>';
-      byId('vl-hk').addEventListener('click', (e) => { e.preventDefault(); const want = !hkWanted(); GM_setValue('vpHotKeysOn', want); hkSet(want); hotKeysSwitch(); });
+    const t = byId('vl-team') || box('vl-team', L.card[0], L.pitch[1] + L.pitch[3] + 12, 'z-index:8');
+    if (!t.childElementCount) {
+      t.innerHTML = `<div class="ag"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/><path d="M16 11a3 3 0 100-6M21 20c0-2.5-1.8-4.2-4-4.8"/></svg>OTHER AGENTS<span class="sum"></span></h3><div class="list"></div></div>
+        <div class="hk off"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>HOT KEYS
+          <span class="sw" id="vl-hksw" role="switch" tabindex="0" title="Turn Hot Keys on or off. Your choice is remembered on this PC, even after logging out."><i></i><span>Off</span></span></h3><div class="keys"></div><div class="note"></div></div>`;
+      const flip = (e) => { e.preventDefault(); const want = !hkWanted(); GM_setValue('vpHotKeysOn', want); hkSet(want); hotKeysSwitch(); };
+      byId('vl-hksw').addEventListener('click', flip);
+      byId('vl-hksw').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') flip(e); });
     }
+    // under the property card (or under the pitch sheet's bottom line, whichever is lower)
+    const pc = byId('vprop-card'), cb = pc && pc.style.display !== 'none' ? pc.getBoundingClientRect().bottom + window.scrollY : 0;
+    const top = Math.max(L.pitch[1] + L.pitch[3] + 12, Math.round(cb) + 12);
+    if (t.style.left !== L.card[0] + 'px' || t.style.top !== top + 'px') { t.style.left = L.card[0] + 'px'; t.style.top = top + 'px'; }
     // The agent's choice sticks (saved on this PC). Vici turns Hot Keys off at every hang up and only
     // allows them on a live call, so this switches them back on by itself as each call comes in.
     const want = hkWanted();
     const img = document.querySelector('img[name="livecall"]'), live = !!img && /_ON\./i.test(img.getAttribute('src') || '');
     if (!want && hkOn()) hkSet(false);
     else if (want && live && !hkOn()) hkSet(true);
-    const on = want;
-    byId('vl-hk').classList.toggle('on', on);
-    byId('vl-hk').querySelector('span').textContent = 'HOT KEYS: ' + (on ? 'ON' : 'OFF');
-    if (on) {
-      // Vici's own list is hidden, so read its text (one line per <br>)
-      const lines = ['HotKeyBoxA', 'HotKeyBoxB', 'HotKeyBoxC'].map((id) => byId(id) ? byId(id).innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ') : '')
-        .join('\n').split('\n').map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
-      byId('vl-hklist').textContent = lines;
-      byId('vl-hklist').style.whiteSpace = 'pre-line';
+    const esc2 = (x) => String(x).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    // hot keys: Vici's own list (one line per <br>), e.g. "1 - A - Answering Machine"
+    const keys = ['HotKeyBoxA', 'HotKeyBoxB', 'HotKeyBoxC'].map((id) => byId(id) ? byId(id).innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ') : '')
+      .join('\n').split('\n').map((x) => x.replace(/\s+/g, ' ').trim()).map((l) => l.match(/^(\S+)\s*-\s*(\S+)\s*-\s*(.+)$/)).filter(Boolean);
+    const hkHTML = keys.map((m) => `<div class="k" title="${esc2(m[2] + ' - ' + m[3])}"><kbd>${esc2(m[1])}</kbd><em>${esc2(m[3])}</em></div>`).join('');
+    const hk = t.querySelector('.hk');
+    hk.classList.toggle('off', !want);
+    byId('vl-hksw').classList.toggle('on', want); byId('vl-hksw').setAttribute('aria-checked', String(want));
+    byId('vl-hksw').querySelector('span').textContent = want ? 'On' : 'Off';
+    if (hk.dataset.k !== hkHTML) { hk.dataset.k = hkHTML; hk.querySelector('.keys').innerHTML = hkHTML; }
+    hk.querySelector('.note').textContent = want ? 'Press a number during a call to disposition it.' : 'Turn on to disposition calls with a number key.';
+    // other agents, from Vici's list colours
+    const rows = [...document.querySelectorAll('#AgentViewStatus tr[bgcolor]')].map((tr) => ({ c: AG_COL[(tr.getAttribute('bgcolor') || '').toUpperCase()] || 'o',
+      n: tr.textContent.replace(/ /g, ' ').trim().replace(/^\d+\s*-\s*/, '') })).filter((r) => r.n);
+    const n = (k) => rows.filter((r) => r.c === k).length;
+    const agHTML = rows.length ? `<div class="grid">${rows.map((r) => `<div class="a ${r.c}" title="${AG_LBL[r.c]}"><i></i><b>${esc2(r.n)}</b><span>${AG_LBL[r.c]}</span></div>`).join('')}</div>`
+      : '<div class="empty">No other agents logged in right now.</div>';
+    const sumHTML = (n('c') ? `<span class="pill c">${n('c')} on a call</span>` : '') + (n('r') ? `<span class="pill r">${n('r')} ready</span>` : '') + (n('p') ? `<span class="pill p">${n('p')} paused</span>` : '');
+    const ag = t.querySelector('.ag');
+    if (ag.dataset.k !== agHTML + sumHTML) { ag.dataset.k = agHTML + sumHTML; ag.querySelector('.list').innerHTML = agHTML; ag.querySelector('.sum').innerHTML = sumHTML; }
+    t.style.display = openKey ? 'none' : 'flex';
+  }
+
+  // ---------- Script panel beside the pitch sheet (shows Vici's SCRIPT / SCRIPT 2, filled in for the lead) ----------
+  let scriptTab = 'ScriptContents', scriptLast = null;
+  function scriptPanel() {
+    const [x, y, w, h] = L.script;
+    let p = byId('vl-script');
+    if (!p) {
+      p = box('vl-script', x, y, `width:${w}px;height:${h}px;z-index:7`);
+      p.innerHTML = '<div class="bar"><b>Script</b><button type="button" data-big>Full screen</button></div><div class="tabs"><span class="on" data-t="ScriptContents">Script</span><span data-t="Script2Contents"><i style="font-style:normal">Script</i> <i style="font-style:normal">2</i></span></div><div class="body"></div>';
+      p.addEventListener('click', (e) => {
+        const tb = e.target.closest('[data-t]');
+        if (tb) { scriptTab = tb.dataset.t; scriptLast = null; p.querySelectorAll('[data-t]').forEach((o) => o.classList.toggle('on', o === tb)); scriptPanel(); return; }
+        if (e.target.closest('[data-big]')) { e.preventDefault(); scriptBig(!p.classList.contains('big')); }
+      });
+    }
+    if (p.classList.contains('big')) { const tb = byId('vprop-tabbar'); p.style.top = Math.round((tb ? tb.getBoundingClientRect().bottom : 48) + 4) + 'px'; }
+    p.style.display = openKey ? 'none' : 'flex';
+    const src = byId(scriptTab), html = src && src.textContent.trim() ? src.innerHTML : '';
+    if (html !== scriptLast) {
+      scriptLast = html;
+      const body = p.querySelector('.body');
+      if (html) body.innerHTML = html.replace(/\sid="[^"]*"/g, '');   // a copy: no duplicate ids on the page
+      else body.innerHTML = `<div class="empty">Nothing in ${scriptTab === 'ScriptContents' ? 'Script' : 'Script 2'} for this call yet.</div>`;
     }
   }
+  function scriptBig(on) {
+    const p = byId('vl-script'); if (!p) return;
+    if (on && openKey) closeScreen();
+    p.classList.toggle('big', on);
+    p.querySelector('[data-big]').textContent = on ? '✕ Back to the call' : 'Full screen';
+    if (!on) Object.assign(p.style, { top: L.script[1] + 'px' });
+    document.documentElement.classList.toggle('vl-big', on || !!openKey);
+    scriptPanel();
+  }
+
+  // ---------- Log out at the top right, the call badge under it (right edges lined up) ----------
+  function topRight() {
+    const g = byId('vl-groups'), lo = g && g.querySelector('a[onclick*="NormalLogout"]');
+    if (lo) { const w = Math.round(lo.getBoundingClientRect().width); if (w) { g.style.left = (L.right - w) + 'px'; g.style.top = '22px'; } }
+    const lv = byId('vl-live'), b = byId('vl-livebadge');
+    if (lv && b) { const w = Math.round(b.getBoundingClientRect().width); if (w) { lv.style.left = (L.right - w) + 'px'; lv.style.top = '60px'; } }
+  }
+
+  // ---------- MortgageUSA logo, top middle (the same picture the Vici script uses) ----------
+  function logo() {
+    if (byId('vl-logo')) return;
+    const im = document.createElement('img');
+    im.id = 'vl-logo'; im.alt = 'MortgageUSA';
+    im.src = 'https://assets.cdn.filesafe.space/s1XJItbEGRUN4i9on94L/media/6ad7be27c5c884efe3eb1671.png';
+    im.addEventListener('error', () => { im.style.display = 'none'; });
+    (byId('vicidial_form') || document.body).appendChild(im);
+  }
+
   // typing a number in a box (Call Notes, Loan Amount…) must never disposition the call
   window.addEventListener('keypress', (e) => {
     if (!LAYOUT_ON || !(hkOn() || hkWanted())) return;
@@ -3082,7 +3254,7 @@ function readHomesPage(doc) {
 
   // ---------- no page scrollbars when everything fits ----------
   function scrollLock() {
-    const parts = ['MainTable', 'vl-form', 'vl-groups', 'vl-hkwrap', 'vl-pitch', 'vprop-card', 'AgentViewSpan', 'webphoneSpan']
+    const parts = ['MainTable', 'vl-form', 'vl-groups', 'vl-team', 'vl-pitch', 'vl-script', 'vprop-card', 'webphoneSpan']
       .map(byId).filter((e) => e && getComputedStyle(e).visibility !== 'hidden' && getComputedStyle(e).display !== 'none');
     let w = 0, h = 0;
     parts.forEach((e) => { const r = e.getBoundingClientRect(); w = Math.max(w, r.right + window.scrollX); h = Math.max(h, r.bottom + window.scrollY); });
