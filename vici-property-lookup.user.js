@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.6
+// @version      15.7
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -227,7 +227,8 @@ function readHomesPage(doc) {
   // Chosen per PC from the menu by Log out or on the login screen; it takes effect at the next login.
   if (/\/agc\//.test(location.pathname) && !stepAside()) {
     const classic = GM_getValue('vpView', 'agency') === 'classic';
-    if (loginSwitch() || classic) return;
+    if (loginSwitch()) return;
+    if (classic) { classicButton(); return; }   // Classic Vici: nothing else of ours, just one small way back
   }
 
   // Vici's login screen: a small switch between Agency View and Classic Vici. Returns true on the login screen.
@@ -244,6 +245,21 @@ function readHomesPage(doc) {
     draw();
     document.body.appendChild(box);
     return true;
+  }
+
+  // Classic Vici agent screen: one small button in the bottom-right corner to go back to Agency View (next login)
+  function classicButton() {
+    const b = document.createElement('div');
+    b.id = 'vl-classicback';
+    b.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:2147483000;display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #d6dce4;border-radius:999px;padding:5px 6px 5px 12px;box-shadow:0 2px 10px rgba(0,0,0,.15);font:12px "Segoe UI",Arial,sans-serif;color:#4a5563';
+    const draw = () => {
+      const c = GM_getValue('vpView', 'agency') === 'classic';
+      b.innerHTML = c ? '<span>Classic Vici</span><button type="button" style="font:600 12px \'Segoe UI\',Arial;border:0;border-radius:999px;padding:6px 12px;cursor:pointer;background:#1652e6;color:#fff">Switch to Agency View</button>'
+        : '<span>Agency View starts the next time you log in.</span><button type="button" style="font:600 12px \'Segoe UI\',Arial;border:1px solid #c4ccd6;border-radius:999px;padding:5px 11px;cursor:pointer;background:#fff;color:#1d2530">Undo</button>';
+      b.querySelector('button').addEventListener('click', (e) => { e.preventDefault(); GM_setValue('vpView', c ? 'agency' : 'classic'); draw(); });
+    };
+    draw();
+    document.body.appendChild(b);
   }
 
   // =====================================================================
@@ -2689,7 +2705,7 @@ function readHomesPage(doc) {
         #vl-team .sum{margin-left:auto;display:flex;gap:6px;letter-spacing:0}
         #vl-team .pill{border-radius:999px;padding:1px 8px;font:600 11px "Segoe UI",Arial}
         #vl-team .pill.r{background:#dbeafe;color:#1d4ed8}#vl-team .pill.c{background:#dcfce7;color:#137a32}#vl-team .pill.p{background:#fef3c7;color:#b45309}
-        #vl-team .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-height:96px;overflow:auto;scrollbar-width:thin}
+        #vl-team .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;max-height:96px;overflow:auto;scrollbar-width:thin}
         #vl-team .a{display:flex;align-items:center;gap:7px;border:1px solid #e6eaef;border-radius:8px;padding:5px 8px;min-width:0}
         #vl-team .a i{width:8px;height:8px;border-radius:50%;flex:none;background:#9aa3ad}
         #vl-team .a.r i{background:#2563eb}#vl-team .a.c i{background:#1aa33c}#vl-team .a.p i{background:#d97706}
@@ -3106,7 +3122,8 @@ function readHomesPage(doc) {
     hk.querySelector('.note').textContent = want ? 'Press a number during a call to disposition it.' : 'Turn on to disposition calls with a number key.';
     // other agents, from Vici's list colours
     const rows = [...document.querySelectorAll('#AgentViewStatus tr[bgcolor]')].map((tr) => ({ c: AG_COL[(tr.getAttribute('bgcolor') || '').toUpperCase()] || 'o',
-      n: tr.textContent.replace(/ /g, ' ').trim().replace(/^\d+\s*-\s*/, '') })).filter((r) => r.n);
+      n: (() => { const t = tr.textContent.replace(/\u00a0/g, ' ').trim(), m = t.match(/^(\S+)\s*-\s*(.+)$/);
+        return m ? (m[1] === m[2].trim() ? m[1] : m[2].trim()) : t; })() })).filter((r) => r.n);   // "110 - BabaG" -> BabaG; remote agents "17002L - 17002L" -> 17002L
     const n = (k) => rows.filter((r) => r.c === k).length;
     const agHTML = rows.length ? `<div class="grid">${rows.map((r) => `<div class="a ${r.c}" title="${AG_LBL[r.c]}"><i></i><b>${esc2(r.n)}</b><span>${AG_LBL[r.c]}</span></div>`).join('')}</div>`
       : '<div class="empty">No other agents logged in right now.</div>';
@@ -3187,7 +3204,7 @@ function readHomesPage(doc) {
         GM_setValue('vpView', v.dataset.vw);
         w.querySelectorAll('[data-vw]').forEach((o) => o.classList.toggle('on', o === v));
         w.querySelector('.vn').textContent = v.dataset.vw === 'classic'
-          ? 'Classic Vici (Vici exactly as it is without this script) starts the next time you log in. To come back, use the switch at the bottom of the login screen.'
+          ? 'Classic Vici (Vici as it is without this script) starts the next time you log in. To come back, use the small button in its bottom-right corner, or the switch on the login screen.'
           : 'Agency View stays on.';
       }
     });
