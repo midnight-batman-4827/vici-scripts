@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      17.0
+// @version      17.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -259,7 +259,20 @@ function readHomesPage(doc) {
     draw();
     document.body.appendChild(box);
     // SUBMIT: the paper cover goes up right away, so "Logging in…" and Vici's in-between pages don't show
-    const go = () => { if (GM_getValue('vpView', 'agency') !== 'classic' && GM_getValue('vpIntro', true)) { introCover(); introWhy('cover on at SUBMIT'); } };
+    // Vici then writes the raw agent screen over this page (its white "not opened properly" and green "ALERT" boxes
+    // show until its own code hides them), which wipes the cover: put it straight back until the real screen loads.
+    let keep = 0;
+    const go = () => {
+      if (keep || GM_getValue('vpView', 'agency') === 'classic' || !GM_getValue('vpIntro', true)) return;
+      introCover(); introWhy('cover on at SUBMIT');
+      const t0 = Date.now();
+      const hold = () => {
+        if (Date.now() - t0 > 20000) { clearInterval(keep); return; }
+        if (!document.getElementById('vl-cover') && document.documentElement) { introCover(); introWhy('cover put back'); }
+      };
+      keep = setInterval(hold, 15);
+      const raf = () => { hold(); if (Date.now() - t0 < 20000) requestAnimationFrame(raf); }; requestAnimationFrame(raf);
+    };
     document.addEventListener('submit', go, true);
     document.addEventListener('click', (e) => { const b = e.target.closest('input[type=submit],input[type=button],button,a'); if (b && /^\s*submit\s*$/i.test(b.value || b.textContent || '')) go(); }, true);
     return true;
