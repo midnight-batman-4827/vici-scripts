@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.5
+// @version      15.6
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -223,6 +223,28 @@ function readHomesPage(doc) {
   if (LL_PAGE) { try { if (!stepAside()) leadLoader(); } finally { reveal(); } return; }
   // admin pages (admins only): new sidebar, top bar and modern pages
   if (ADMIN_PAGE) { let r = false; try { if (!stepAside()) r = adminUI(); } finally { if (r !== 'redirect') reveal(); } return; }
+  // Agent screen: Agency View (everything below) or Classic Vici (exactly Vici as if this script were off).
+  // Chosen per PC from the menu by Log out or on the login screen; it takes effect at the next login.
+  if (/\/agc\//.test(location.pathname) && !stepAside()) {
+    const classic = GM_getValue('vpView', 'agency') === 'classic';
+    if (loginSwitch() || classic) return;
+  }
+
+  // Vici's login screen: a small switch between Agency View and Classic Vici. Returns true on the login screen.
+  function loginSwitch() {
+    if (!document.querySelector('input[name="VD_login"], input[name="phone_login"], input[name="VD_pass"]')) return false;
+    const box = document.createElement('div');
+    box.id = 'vl-loginview';
+    box.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483000;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #d6dce4;border-radius:999px;padding:6px 8px 6px 14px;box-shadow:0 4px 16px rgba(0,0,0,.15);font:13px "Segoe UI",Arial,sans-serif;color:#1d2530';
+    const draw = () => {
+      const c = GM_getValue('vpView', 'agency') === 'classic';
+      box.innerHTML = `<span>Screen: <b>${c ? 'Classic Vici' : 'Agency View'}</b></span><button type="button" style="font:600 12.5px 'Segoe UI',Arial;border:0;border-radius:999px;padding:7px 14px;cursor:pointer;background:#1652e6;color:#fff">Switch to ${c ? 'Agency View' : 'Classic Vici'}</button>`;
+      box.querySelector('button').addEventListener('click', (e) => { e.preventDefault(); GM_setValue('vpView', c ? 'agency' : 'classic'); draw(); });
+    };
+    draw();
+    document.body.appendChild(box);
+    return true;
+  }
 
   // =====================================================================
   //  Admin pages (admins only: agents can't open them). New sidebar + top bar on every admin page,
@@ -2709,7 +2731,77 @@ function readHomesPage(doc) {
         #vl-groups a[onclick*="NormalLogout"]::after{content:"Log out";font:600 12.5px "Segoe UI",Arial,sans-serif;color:#c4252b;padding-left:20px}
         #vl-groups a[onclick*="NormalLogout"]:hover{background-color:#fff5f5;border-color:#c4252b}
         #vl-livebadge .mt{font-variant-numeric:tabular-nums;font-weight:600;padding-left:6px;margin-left:2px;border-left:1px solid rgba(255,255,255,.45)}
-        #vl-livebadge.off .mt{display:none}`;
+        #vl-livebadge.off .mt{display:none}
+        /* theme menu */
+        #vl-theme{font:600 12px "Segoe UI",Arial,sans-serif}
+        #vl-theme .tb{width:32px;height:30px;border-radius:8px;border:1px solid #c4ccd6;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.12);padding:0;color:#1652e6}
+        #vl-theme .tb svg{width:16px;height:16px}
+        #vl-theme .menu{display:none;position:absolute;right:0;top:36px;width:240px;background:#fff;border:1px solid #d6dce4;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:6px;color:#1d2530}
+        #vl-theme.open .menu{display:block}
+        #vl-theme .menu b{display:block;font:700 10.5px "Segoe UI",Arial;letter-spacing:.06em;color:#6b7686;padding:4px 8px 6px}
+        #vl-theme .menu b.sep{margin-top:6px;border-top:1px solid #e6eaef;padding-top:10px}
+        #vl-theme .menu div{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;cursor:pointer}
+        #vl-theme .menu div:hover{background:#f1f4f8}
+        #vl-theme .menu i{width:22px;height:16px;border-radius:4px;border:1px solid #c4ccd6;flex:none}
+        #vl-theme .menu div.on::after{content:"\\2713";margin-left:auto;color:#1652e6;font-weight:700}
+        #vl-theme .vn{margin:4px 8px;font:11px "Segoe UI",Arial;color:#6b7686}#vl-theme .vn:empty{display:none}
+        #NothingBox2,#inert_button{opacity:0!important}
+        /* every theme except Vici grey: header band, light page, Vici's grey boxes see-through */
+        #vl-band{display:none}
+        html.th-on #vl-band{display:block;position:absolute;left:0;top:0;width:max(100%,1920px);height:94px;z-index:1}
+        html.th-on,html.th-on body,html.th-on #Header table,html.th-on #Tabs table,html.th-on #Tabs td,html.th-on #AgentViewSpan,html.th-on #AgentViewSpan table{background:var(--th-bg)!important;background-color:var(--th-bg)!important}
+        html.th-on #Header table,html.th-on #Tabs table,html.th-on #Tabs td,html.th-on #MainTable,html.th-on #MainTable td,html.th-on #MainTable tr{background:transparent!important;background-color:transparent!important}
+        html.th-on #Header,html.th-on #Tabs{position:relative;z-index:3}
+        html.th-on #Header,html.th-on #Header *{color:var(--th-hdr)!important}
+        html.th-on #vl-custtime,html.th-on #vl-custtime *,html.th-on #dialableleadsspan,html.th-on #dialableleadsspan *{color:var(--th-hdr2)!important}
+        html.th-on #vl-form h3,html.th-on #vl-pitch h3,html.th-on #vl-team h3,html.th-on #vl-xfer h3,html.th-on #vprop-card .vc-title{color:var(--th-head)!important}
+        html.th-on #vl-form h3 svg,html.th-on #vl-team h3 svg,html.th-on #vl-col .lk svg{color:#1652e6!important}
+        html.th-on #vl-col .hang{background:#e3262d!important}html.th-on #vl-col .other{background:#1652e6!important}
+        html.th-on #vl-pitch .bar button.go{background:#1652e6!important;border-color:#1652e6!important}
+        html.th-on #vl-pitch .t.on,html.th-on #vl-pitch .p.on{background:#1652e6!important;border-color:#1652e6!important}
+        html.th-on #vl-pitch .sec.pitchsec{border-color:#e3262d!important}html.th-on #vl-pitch .sec.pitchsec .n{background:#e3262d!important}
+        html.th-on #vl-script .tabs span.on{color:#1652e6!important;border-bottom-color:#1652e6!important}
+        html.th-on #vl-team .sw.on i{background:#1652e6!important}
+        /* Navy */
+        html.th-navy{--th-bg:#eef2f8;--th-hdr:#cfe0ff;--th-hdr2:#fff;--th-head:#0b2a55}
+        html.th-navy #vl-band{background:linear-gradient(90deg,#0b2a55,#123d78);box-shadow:0 2px 8px rgba(11,42,85,.25)}
+        html.th-navy #vl-band::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,#e3262d 0 33%,#fff 33% 34%,#1652e6 34%)}
+        html.th-navy #vl-form .sec,html.th-navy #vprop-card,html.th-navy #vl-team,html.th-navy #vl-pitch,html.th-navy #vl-script{border-top:3px solid #1652e6!important}
+        html.th-navy #vl-pitch h3 .n{background:#0b2a55!important}
+        html.th-navy #vprop-card .vc-hero{background:#eaf0fd!important}
+        html.th-navy #vl-livebadge.off{background:rgba(255,255,255,.12)!important;color:#dbe6ff!important;border-color:rgba(255,255,255,.3)!important}
+        /* Clean */
+        html.th-clean{--th-bg:#f5f7fb;--th-hdr:#6b7686;--th-hdr2:#1d2530;--th-head:#1d2530}
+        html.th-clean #vl-band{background:#fff;box-shadow:0 1px 0 #e3e8f0,0 2px 8px rgba(20,30,50,.05)}
+        html.th-clean #vl-band::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:#1652e6}
+        html.th-clean #vl-logo{box-shadow:none}
+        /* Dark */
+        html.th-dark{--th-bg:#0a1220;--th-hdr:#8fa6c6;--th-hdr2:#e6edf7;--th-head:#e6edf7}
+        html.th-dark #vl-band{background:#0d1626;box-shadow:0 1px 0 #1f2d44}
+        html.th-dark #vl-band::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,#e3262d 0 33%,#fff 33% 34%,#1652e6 34%)}
+        html.th-dark #vl-form .sec,html.th-dark #vprop-card,html.th-dark #vl-team,html.th-dark #vl-script,html.th-dark #vl-pitch .bar,html.th-dark #vl-pitch .sec,html.th-dark #vl-script .bar,html.th-dark #vl-script .tabs,html.th-dark #vl-team .hk,html.th-dark #vl-xfer{background:#121c2e!important;border-color:#24324a!important;color:#e6edf7!important;box-shadow:none!important}
+        html.th-dark #vl-pitch,html.th-dark #vl-pitch .page{background:#0e1727!important}
+        html.th-dark #vl-pitch .bar b,html.th-dark #vl-script .bar b,html.th-dark #vprop-card .vc-v,html.th-dark #vprop-card .vc-big,html.th-dark #vprop-card .vc-msg,html.th-dark #vl-team .a b{color:#e6edf7!important}
+        html.th-dark #vl-form label,html.th-dark #vl-pitch label,html.th-dark #vl-pitch .sub,html.th-dark #vl-pitch .cob-off,html.th-dark #vl-pitch .lock,html.th-dark #vl-pitch .bar b span,html.th-dark #vprop-card .vc-k,html.th-dark #vprop-card .vc-addr,html.th-dark #vprop-card .vc-hint,html.th-dark #vprop-card .vc-sub,html.th-dark #vprop-card .vc-wait,html.th-dark #vl-team .note,html.th-dark #vl-team .a span,html.th-dark #vl-team .empty,html.th-dark #vl-script .tabs span,html.th-dark #vl-xfer .lbl,html.th-dark #vl-xfer .meta{color:#8fa6c6!important}
+        html.th-dark #vl-form input,html.th-dark #vl-form select,html.th-dark #vl-form textarea,html.th-dark #vl-pitch .in,html.th-dark #vl-col .dtmf input,html.th-dark #vl-xfer select,html.th-dark #vl-xfer input[type=text]{background:#0b1424!important;border-color:#2b3b57!important;color:#e6edf7!important}
+        html.th-dark #vl-form .ro .slot,html.th-dark #vl-form .ro .slot *{color:#e6edf7!important}
+        html.th-dark #vl-pitch .in.auto{background:#13264a!important;border-color:#2f5bb8!important}
+        html.th-dark #vl-pitch .t,html.th-dark #vl-pitch .p,html.th-dark #vl-pitch .bar button:not(.go),html.th-dark #vl-script .bar button,html.th-dark #vl-xfer .neu{background:#0b1424!important;border-color:#2b3b57!important;color:#e6edf7!important}
+        html.th-dark #vl-pitch .t.on,html.th-dark #vl-pitch .p.on{color:#fff!important}
+        html.th-dark #vl-pitch .prompt{background:#2a2310!important;border-color:#6b5520!important;color:#f3d08a!important}
+        html.th-dark #vl-pitch .sub{border-top-color:#24324a!important}
+        html.th-dark #vprop-card .vc-tile{background:#0e1727!important;border-color:#24324a!important}html.th-dark #vprop-card .vc-hero{background:#13264a!important}
+        html.th-dark #vprop-card .vc-site{background:#0b1424!important;border-color:#2b3b57!important;color:#e6edf7!important}
+        html.th-dark #vprop-card .vc-warn{background:#2a2310!important;border-color:#6b5520!important;color:#f3d08a!important}
+        html.th-dark #vprop-card .up{color:#4ade80!important}html.th-dark #vprop-card .warn{color:#fbbf24!important}html.th-dark #vprop-card .down{color:#f87171!important}
+        html.th-dark #vl-team .a{background:#0e1727!important;border-color:#24324a!important}
+        html.th-dark #vl-team .pill.c{background:#123320!important;color:#4ade80!important}html.th-dark #vl-team .pill.r{background:#13264a!important;color:#93b4ff!important}html.th-dark #vl-team .pill.p{background:#2a2310!important;color:#fbbf24!important}
+        html.th-dark #vl-team .k{color:#c9d6ea!important}html.th-dark #vl-team .k kbd{background:#0b1424!important;border-color:#2b3b57!important;color:#e6edf7!important}
+        html.th-dark #vl-script .body{background:#fff!important;color:#111!important}
+        html.th-dark #vl-col .neutral{background:#121c2e!important;border-color:#2b3b57!important;color:#e6edf7!important}
+        html.th-dark #vl-col .lk{color:#e6edf7!important}html.th-dark #vl-col .lk:hover{background:#18243a!important}html.th-dark #vl-col .lk b{background:#18243a!important;color:#8fa6c6!important}
+        html.th-dark #vl-livebadge.off{background:rgba(255,255,255,.06)!important;color:#8fa6c6!important;border-color:#2b3b57!important}
+        html.th-dark #vl-theme .tb{background:#121c2e;border-color:#2b3b57}`;
       document.head.appendChild(st);
     }
 
@@ -3061,9 +3153,47 @@ function readHomesPage(doc) {
   // ---------- Log out at the top right, the call badge under it (right edges lined up) ----------
   function topRight() {
     const g = byId('vl-groups'), lo = g && g.querySelector('a[onclick*="NormalLogout"]');
-    if (lo) { const w = Math.round(lo.getBoundingClientRect().width); if (w) { g.style.left = (L.right - w) + 'px'; g.style.top = '22px'; } }
+    if (lo) { const w = Math.round(lo.getBoundingClientRect().width); if (w) { g.style.left = (L.right - w) + 'px'; g.style.top = '22px'; const m = themeMenu(); m.style.left = (L.right - w - 40) + 'px'; m.style.top = '22px'; } }
     const lv = byId('vl-live'), b = byId('vl-livebadge');
     if (lv && b) { const w = Math.round(b.getBoundingClientRect().width); if (w) { lv.style.left = (L.right - w) + 'px'; lv.style.top = '60px'; } }
+  }
+
+  // ---------- Themes (Vici grey / Navy / Clean / Dark) and the screen switch, in a menu left of Log out ----------
+  // Each agent's choice is remembered on their PC (like Hot Keys). Classic Vici applies at the next login.
+  const THEMES_UI = [['grey', 'Vici grey', '#cccccc'], ['navy', 'Navy', 'linear-gradient(90deg,#0b2a55,#123d78)'], ['clean', 'Clean', '#f5f7fb'], ['dark', 'Dark', '#0a1220']];
+  function applyTheme(k) {
+    if (!THEMES_UI.some((t) => t[0] === k)) k = 'clean';
+    const h = document.documentElement;
+    THEMES_UI.forEach((t) => h.classList.toggle('th-' + t[0], t[0] === k));
+    h.classList.toggle('th-on', k !== 'grey');
+    if (!byId('vl-band')) { const b = document.createElement('div'); b.id = 'vl-band'; document.body.insertBefore(b, document.body.firstChild); }
+    const m = byId('vl-theme'); if (m) m.querySelectorAll('[data-th]').forEach((o) => o.classList.toggle('on', o.dataset.th === k));
+  }
+  function themeMenu() {
+    let w = byId('vl-theme');
+    if (w) return w;
+    w = box('vl-theme', L.right - 140, 22, 'z-index:70');
+    const view = GM_getValue('vpView', 'agency');
+    w.innerHTML = `<button type="button" class="tb" title="Theme and screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor"/></svg></button>
+      <div class="menu"><b>THEME</b>${THEMES_UI.map(([k, l, c]) => `<div data-th="${k}"><i style="background:${c}"></i>${l}</div>`).join('')}
+        <b class="sep">SCREEN</b><div data-vw="agency" class="${view === 'agency' ? 'on' : ''}"><i style="background:linear-gradient(135deg,#1652e6 50%,#fff 50%)"></i>Agency View</div>
+        <div data-vw="classic" class="${view === 'classic' ? 'on' : ''}"><i style="background:#cccccc"></i>Classic Vici</div><p class="vn"></p></div>`;
+    w.querySelector('.tb').addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); w.classList.toggle('open'); });
+    w.querySelector('.menu').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const t = e.target.closest('[data-th]'), v = e.target.closest('[data-vw]');
+      if (t) { GM_setValue('vpTheme', t.dataset.th); applyTheme(t.dataset.th); w.classList.remove('open'); }
+      if (v) {
+        GM_setValue('vpView', v.dataset.vw);
+        w.querySelectorAll('[data-vw]').forEach((o) => o.classList.toggle('on', o === v));
+        w.querySelector('.vn').textContent = v.dataset.vw === 'classic'
+          ? 'Classic Vici (Vici exactly as it is without this script) starts the next time you log in. To come back, use the switch at the bottom of the login screen.'
+          : 'Agency View stays on.';
+      }
+    });
+    document.addEventListener('click', (e) => { if (!e.target.closest('#vl-theme')) w.classList.remove('open'); });
+    applyTheme(GM_getValue('vpTheme', 'clean'));
+    return w;
   }
 
   // ---------- MortgageUSA logo, top middle (the same picture the Vici script uses) ----------
