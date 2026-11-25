@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      16.8
+// @version      16.9
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -235,9 +235,11 @@ function readHomesPage(doc) {
     if (stepAside()) reveal();
     else {
       const classic = GM_getValue('vpView', 'agency') === 'classic';
-      if (loginSwitch()) { reveal(); return; }
-      if (classic) { reveal(); classicButton(); return; }   // Classic Vici: nothing else of ours, just one small way back
-      if (GM_getValue('vpIntro', true)) introCover();
+      try { document.documentElement.setAttribute('data-vl-version', GM_info.script.version); } catch (e) {}
+      introWhy('page start, ready=' + document.readyState + ', v' + document.documentElement.getAttribute('data-vl-version'));
+      if (loginSwitch()) { introWhy('login screen'); reveal(); return; }
+      if (classic) { introWhy('classic view'); reveal(); classicButton(); return; }   // Classic Vici: nothing else of ours, just one small way back
+      if (GM_getValue('vpIntro', true)) { introCover(); introWhy('cover on'); } else introWhy('intro off');
       reveal();
     }
   }
@@ -263,11 +265,16 @@ function readHomesPage(doc) {
   let coverTicks = 0;
   function coverWatch() {
     const c = byId('vl-cover'); if (!c) return;
-    // Vici is showing something the agent must act on (a choice, an error, another session…): let them see it
-    if (document.documentElement.classList.contains('vl-takeover') && !(groupsDone && byId('CloserSelectBox') && getComputedStyle(byId('CloserSelectBox')).visibility === 'visible')) {
-      if (++coverTicks >= 2) { c.remove(); introDone = true; }
+    // Vici is showing something the agent must act on (a choice, an error, another session…): let them see it.
+    // Not the green group box while it's still loading or only says "Manager has selected groups" (we submit that one).
+    const full = document.querySelector('.vl-full'), gb = byId('CloserSelectContent');
+    const groupsWait = full && full.id === 'CloserSelectBox' && (groupsDone || !gb || !gb.textContent.trim() || /^\s*Manager has selected groups for you\s*$/i.test(gb.textContent));
+    if (full && !groupsWait) {
+      if (++coverTicks >= 3) { c.remove(); introDone = true; introWhy('cover dropped: Vici box ' + full.id); }
     } else coverTicks = 0;
   }
+  // why the intro did / didn't play at the last login (read in the browser console: sessionStorage.vlIntroWhy)
+  function introWhy(x) { try { const l = (sessionStorage.getItem('vlIntroWhy') || '').split('\n').filter(Boolean).slice(-14); l.push(Math.round(performance.now()) + 'ms ' + x); sessionStorage.setItem('vlIntroWhy', l.join('\n')); } catch (e) {} }
   function introCover() {
     if (document.getElementById('vl-cover')) return;
     let dark = false; try { dark = GM_getValue('vpTheme', 'clean') === 'dark'; } catch (e) {}
@@ -275,9 +282,9 @@ function readHomesPage(doc) {
     c.id = 'vl-cover';
     c.style.cssText = `position:fixed;inset:0;z-index:2147483400;background:${dark ? '#0d1626' : '#f4f1ea'};transition:opacity .4s;display:flex;align-items:center;justify-content:center;cursor:pointer`;
     c.innerHTML = `<div style="font:700 10px Consolas,monospace;letter-spacing:.14em;color:${dark ? '#8fa6c6' : '#8a8478'}">GETTING YOUR SCREEN READY…</div>`;
-    c.addEventListener('click', () => c.remove());
+    c.addEventListener('click', () => { c.remove(); introWhy('cover clicked away'); });
     document.documentElement.appendChild(c);
-    setTimeout(() => c.remove(), 15000);
+    setTimeout(() => { if (c.isConnected) introWhy('cover timed out (15s)'); c.remove(); }, 15000);
   }
 
   // Classic Vici agent screen: one small button in the bottom-right corner to go back to Agency View (next login)
@@ -3034,8 +3041,8 @@ function readHomesPage(doc) {
     logo();
     scrollLock();
     // plays once the screen is really up (after Vici's own login boxes, e.g. picking in-groups, have closed)
-    if (!introDone && performance.now() > 120000) introDone = true;
-    if (!introDone && !document.documentElement.classList.contains('vl-takeover') && byId('vl-team') && byId('vl-script') && byId('vl-pitch')) { introDone = true; try { playIntro(); } catch (e) {} }
+    if (!introDone && performance.now() > 120000) { introDone = true; introWhy('gave up: Vici box still up after 2 min'); }
+    if (!introDone && !document.documentElement.classList.contains('vl-takeover') && byId('vl-team') && byId('vl-script') && byId('vl-pitch')) { introDone = true; try { playIntro(); } catch (e) { introWhy('error: ' + e.message); } }
   }
 
 
@@ -3603,8 +3610,8 @@ function readHomesPage(doc) {
   // It's only a cover: Vici keeps loading and working underneath the whole time.
   let introDone = false;
   function playIntro() {
-    if (!GM_getValue('vpIntro', true)) { const cv = byId('vl-cover'); if (cv) cv.remove(); return; }
-    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!GM_getValue('vpIntro', true)) { const cv = byId('vl-cover'); if (cv) cv.remove(); introWhy('off in the menu'); return; }
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { introWhy('Windows animations are off'); return; }
     const dark = document.documentElement.classList.contains('th-dark');
     const secs = [...document.querySelectorAll('#vl-form .sec')];
     const secName = (e) => (e.querySelector('h3') || e).textContent.trim().toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
@@ -3613,7 +3620,8 @@ function readHomesPage(doc) {
       [[byId('vl-pitch'), 'Pitch sheet', '#e3262d'], [byId('vl-script'), 'Script', '#db2777'],
        [pc && pc.style.display !== 'none' ? pc : null, 'Property at a glance', '#0f766e'], [byId('vl-team'), 'Agents + Hot keys', '#4f46e5']])
       .map(([el, label, c]) => ({ el, label, c, r: el && el.getBoundingClientRect() })).filter((x) => x.r && x.r.width > 20 && x.r.height > 20);
-    if (!P.length) return;
+    if (!P.length) { introWhy('nothing on screen to draw'); return; }
+    introWhy('played');
     const paperC = dark ? '#0d1626' : '#f4f1ea', ink = dark ? '#e6edf7' : '#151515', off = dark ? '#24324a' : '#e2ddd2', dotC = dark ? '#2b3b57' : '#b9b2a3';
     const ov = document.createElement('div');
     ov.id = 'vl-intro';

@@ -26,13 +26,13 @@ The same tool as the Tampermonkey script, packaged as a Microsoft Edge extension
 ### Store listing text
 
 **Description**
-> Internal tool for Mortgageusa loan officers. On Mortgageusa's VICIdial agent screen, it adds Zillow, Realtor.com, Homes.com and Trulia tabs next to SCRIPT 2, plus a "Property at a glance" card. When a call connects, it looks up the lead's address and shows the home's estimated value, sale history, tax and assessment history, recorded mortgages and ownership history, photos and home details, together with the lead's loan-to-value and estimated equity. If there's no exact address match, it suggests close matches in the same State and ZIP. Works only for Mortgageusa's VICIdial login; it does nothing on other sites.
+> Internal tool for Mortgageusa employees, for Mortgageusa's VICIdial system only. It gives the VICIdial agent screen a modern layout with themes, a pitch sheet, an improved disposition screen and an opening animation, and adds a "Property at a glance" card and a Property tab with the lead's home value, sale and tax history and loan-to-value, looked up on Zillow. Loan officers can send a finished pitch sheet as a PDF to their team lead in Microsoft Teams through the company's own Microsoft 365. It also restyles Mortgageusa's VICIdial admin pages. It does nothing on other sites.
 
 **Short description**
-> Zillow, Realtor.com, Homes.com and Trulia property facts on the Mortgageusa VICIdial agent screen.
+> Modern agent screen, pitch sheet and property facts for Mortgageusa's VICIdial system.
 
 ### Notes for certification (paste in the "Notes for certification" box)
-> This is a hidden, internal tool for Mortgageusa employees. It only runs on our VICIdial agent screen at mtgusa.talkitpro.com/agc/ (login required) and on www.homes.com, which it opens in a small window to look up the lead's address and closes when done. When no lookup is in progress, the extension does nothing on www.homes.com. All code is included in the package; nothing is loaded remotely. Host permissions (zillowstatic.com, moveaws.com, zillow.com, trulia.com, realtor.com) are used only to look up the lead's property address. No data is collected or sent anywhere else.
+> This is a hidden, internal tool for Mortgageusa employees. It runs on our VICIdial system at mtgusa.talkitpro.com (login required, so it can't be tried without a Mortgageusa account) and declares www.homes.com only for its address helper. All code is included in the package; nothing is loaded remotely. Host permissions: zillow.com, zillowstatic.com and parser-external.geo.moveaws.com look up the lead's property address; realtor.com and trulia.com are used for address matching and links. powerplatform.com and logic.azure.com are our own Microsoft 365 Power Automate workflow: only when the user clicks "Send to Team Lead", the pitch sheet PDF is sent there, saved in our private SharePoint and posted to the team lead in Teams. The workflow address is set by our IT through Edge policy (managed storage, schema included). No other data is collected or sent anywhere.
 
 ---
 
