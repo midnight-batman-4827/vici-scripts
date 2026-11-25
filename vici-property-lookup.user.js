@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      13.6
+// @version      13.8
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -125,6 +125,9 @@ function readHomesPage(doc) {
       (document.body || document.documentElement).appendChild(n);
     };
     notice();
+    // the tab name says what it is, in case an agent spots it in the tab bar
+    const title = () => { if (document.title !== 'Vici lookup - closes by itself') document.title = 'Vici lookup - closes by itself'; };
+    title(); setInterval(title, 500);
     if (!document.body) document.addEventListener('DOMContentLoaded', notice);
     const finish = (payload) => {
       GM_setValue('vpHomesResult', Object.assign({ id: job.id }, payload));
@@ -702,7 +705,7 @@ function readHomesPage(doc) {
   }
 
   function loadDetails(a, c) {
-    ['zillow', 'trulia', 'realtor'].forEach((k) => loadSite(a, c, k)); // Homes.com loads when its tab is opened
+    ['zillow', 'trulia', 'realtor'].forEach((k) => loadSite(a, c, k)); // Homes.com starts from renderAll (background tab)
   }
 
   // Opens homes.com in a background tab, lets the homes.com helper search the address, waits for its answer
@@ -717,17 +720,20 @@ function readHomesPage(doc) {
         try { tab && tab.close(); } catch (e) {}
         resolve(v);
       });
-      // A small pop-up window keeps running at full speed (Edge slows down background tabs);
-      // if pop-ups are blocked, fall back to a background tab.
+      // First try a background tab the agent never sees (it renames itself and closes when done).
+      // Some browsers slow background tabs down a lot; if it hasn't answered in 15 seconds,
+      // switch to the small pop-up window, which always runs at full speed.
       const url = 'https://www.homes.com/#vprop-' + id;
-      const w = 520, h = 420;
-      let pop = null;
-      try {
-        pop = window.open(url, 'vprop-homes', `popup=yes,width=${w},height=${h},left=${Math.max(0, screen.availWidth - w - 20)},top=${Math.max(0, screen.availHeight - h - 60)}`);
-      } catch (e) { pop = null; }
-      tab = pop ? { close: () => { try { pop.close(); } catch (e) {} } }
-        : GM_openInTab(url, { active: false, insert: true, setParent: true });
-      setTimeout(() => { if (done) return; done = true; GM_removeValueChangeListener(listener); try { tab && tab.close(); } catch (e) {} resolve(null); }, 45000);
+      tab = GM_openInTab(url, { active: false, insert: true, setParent: true });
+      setTimeout(() => {
+        if (done) return;
+        try { tab && tab.close(); } catch (e) {}
+        const w = 520, h = 420;
+        let pop = null;
+        try { pop = window.open(url, 'vprop-homes', `popup=yes,width=${w},height=${h},left=${Math.max(0, screen.availWidth - w - 20)},top=${Math.max(0, screen.availHeight - h - 60)}`); } catch (e) { pop = null; }
+        tab = pop ? { close: () => { try { pop.close(); } catch (e) {} } } : GM_openInTab(url, { active: false, insert: true, setParent: true });
+      }, 15000);
+      setTimeout(() => { if (done) return; done = true; GM_removeValueChangeListener(listener); try { tab && tab.close(); } catch (e) {} resolve(null); }, 50000);
     });
   }
 
@@ -1045,7 +1051,7 @@ function readHomesPage(doc) {
     switch (st.state) {
       case 'idle': case 'loading':
         if (key === 'homes') return msg(`<div class="vp-wait"><span class="vp-spin"></span><div><b>Gathering information from Homes.com. Wait a second.</b>
-          <div class="vp-wait-sub">A small Homes.com window opens to look up the home. <b>Don't close it.</b> It closes by itself when it's done (usually 5 to 15 seconds).</div></div></div>`);
+          <div class="vp-wait-sub">Homes.com is being looked up in a background tab named <b>\u201cVici lookup\u201d</b>. It closes by itself when it's done (usually 5 to 20 seconds).</div></div></div>`);
         return msg('Looking up the property…');
       case 'ok': return body((st.picked ? `<div class="vp-banner">${icon('pin')}<div><b>Showing a close match, not the exact lead address:</b> ${esc(nearLabel(st.picked))}. Confirm the address with the borrower.</div></div>` : '') + modelHTML(a, st.model, key));
       case 'shared':
@@ -1424,8 +1430,8 @@ function readHomesPage(doc) {
       tabs[s.key].title = `${s.label}: ` + ({ ok: 'facts ready', shared: 'facts ready', loading: 'loading…', blocked: 'blocked by the site – open it directly',
         nomatch: 'no exact match', nosource: 'open on the site', error: 'couldn\'t load', idle: 'waiting for a lead address' }[st] || st);
     });
-    // Homes.com only loads when its tab is open
-    if (openKey === 'homes' && c && c.done && siteState(c, 'homes').state === 'idle') loadSite(a, c, 'homes');
+    // Homes.com starts on its own as soon as a call's address is looked up (in a background tab)
+    if (c && c.done && siteState(c, 'homes').state === 'idle') loadSite(a, c, 'homes');
     if (!screen || !openKey) return;
     const st = c ? siteState(c, openKey) : {};
     const key = openKey + '|' + a.full + '|' + st.state + '|' + (c ? SITES.map((x) => siteState(c, x.key).state).join(',') : '') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
@@ -1751,11 +1757,20 @@ function readHomesPage(doc) {
   let tkObs = null, tkQueued = false;
   function watchTakeover() {
     if (tkObs) return;
-    tkObs = new MutationObserver(() => {
+    tkObs = new MutationObserver((recs) => {
+      // only Vici's own boxes matter (our pieces restyle themselves all the time)
+      if (!recs.some((r) => !/^(vl-|vprop)/.test(r.target.id || '') && !(r.target.closest && r.target.closest('[id^="vl-"],[id^="vprop"]')))) return;
       if (tkQueued) return; tkQueued = true;
-      queueMicrotask(() => { tkQueued = false; try { takeover(); } catch (e) {} });
+      queueMicrotask(() => { tkQueued = false; try { takeover(); scriptCover(); } catch (e) {} });
     });
     tkObs.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
+  }
+
+  // SCRIPT / SCRIPT 2 just opened: hide the card and pitch sheet right away (they come back on the next check)
+  function scriptCover() {
+    const up = ['ScriptPanel', 'Script2Panel'].some((id) => { const e = byId(id); return e && getComputedStyle(e).visibility === 'visible'; });
+    if (!up) return;
+    ['vprop-card', 'vl-pitch'].forEach((id) => { const e = byId(id); if (e) e.style.display = 'none'; });
   }
 
   // ---------- Live-call light as a badge (Vici's own picture stays, hidden; it tells us the state) ----------
@@ -1908,7 +1923,7 @@ function readHomesPage(doc) {
       });
     }
     // hidden whenever a property tab or Vici's SCRIPT panels are up
-    const sp = byId('ScriptPanel'), sp2 = byId('ScriptPanel2');
+    const sp = byId('ScriptPanel'), sp2 = byId('Script2Panel');
     const covered = openKey || [sp, sp2].some((e) => e && getComputedStyle(e).visibility === 'visible');
     ps.style.display = covered ? 'none' : 'flex';
 
@@ -2070,7 +2085,8 @@ function readHomesPage(doc) {
     }
     const c0 = () => cache[getAddress().full];
     const anchor = cardAnchor();
-    const why = !anchor ? 'no Call Notes box' : a.missing.length ? 'lead missing ' + a.missing.join(', ') : openKey ? 'a property tab is open' : '';
+    const scriptUp = ['ScriptPanel', 'Script2Panel'].some((id) => { const e = byId(id); return e && getComputedStyle(e).visibility === 'visible'; });
+    const why = !anchor ? 'no Call Notes box' : a.missing.length ? 'lead missing ' + a.missing.join(', ') : openKey ? 'a property tab is open' : scriptUp ? 'a SCRIPT panel is open' : '';
     card.dataset.why = why;
     if (why) { card.style.display = 'none'; return; }
     const r = anchor.getBoundingClientRect();
