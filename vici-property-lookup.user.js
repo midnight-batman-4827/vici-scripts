@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      14.5
+// @version      15.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
 // @match        *://mtgusa.talkitpro.com/vicidial/admin_listloader*
+// @match        *://mtgusa.talkitpro.com/vicidial/admin.php*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -33,8 +34,9 @@
   // Lead loader: hide the page the moment it starts loading and show it once the new look is on,
   // so Vici's old screen never flashes. (Shown after 3 seconds no matter what.)
   const LL_PAGE = /\/vicidial\/admin_listloader/.test(location.pathname);
+  const ADMIN_PAGE = /\/vicidial\/admin\.php$/.test(location.pathname);
   let reveal = () => {};
-  if (LL_PAGE) {
+  if (LL_PAGE || ADMIN_PAGE) {
     const ph = document.createElement('style');
     ph.textContent = 'html{visibility:hidden!important}';
     const root = () => document.head || document.documentElement;
@@ -219,11 +221,433 @@ function readHomesPage(doc) {
   if (/(^|\.)homes\.com$/.test(location.hostname)) { setTimeout(() => { if (!stepAside()) homesWorker(); }, IS_EXT ? 0 : 1500); return; }
   // the lead loader (admins only) gets its own look; nothing else of this script runs there
   if (LL_PAGE) { try { if (!stepAside()) leadLoader(); } finally { reveal(); } return; }
+  // admin pages (admins only): new sidebar, top bar and modern pages
+  if (ADMIN_PAGE) { let r = false; try { if (!stepAside()) r = adminUI(); } finally { if (r !== 'redirect') reveal(); } return; }
 
   // =====================================================================
-  //  Lead loader (admins only: agents can't open this page). Modern look, Mortgageusa's names for the
-  //  relabeled fields, and a preview of the picked file. Vici's own form, fields and buttons are kept
-  //  and only restyled/moved, so what gets sent to Vici never changes.
+  //  Admin pages (admins only: agents can't open them). New sidebar + top bar on every admin page,
+  //  and modern lists, settings forms, tabs, Reports cards, script editor and Admin tiles.
+  //  Vici's own links, fields and buttons are kept and only restyled/moved: nothing is sent differently.
+  // =====================================================================
+  const ADMIN_CSS = `
+  html.mu-adm,html.mu-adm body{background:#eef1f5!important}
+  html.mu-adm body>center>table{margin:0!important;background:transparent!important;width:100%!important;min-height:100vh}
+  html.mu-adm .mu-side{background:#0f2747!important;width:230px!important;min-width:230px;padding:0 12px 20px!important;vertical-align:top}
+  html.mu-adm .mu-side,html.mu-adm .mu-side *{font-family:"Segoe UI",Arial,sans-serif!important}
+  html.mu-adm .mu-side>a>img{display:block;margin:14px auto 6px}
+  html.mu-adm .mu-side>b{display:block;text-align:left;margin:4px 6px 12px}
+  html.mu-adm .mu-side>b font{font:700 11px "Segoe UI",Arial!important;letter-spacing:.12em;color:#8fa6c6!important}
+  html.mu-adm .mu-side table{background:transparent!important;width:100%!important}
+  html.mu-adm .mu-side .horiz_line{display:none}
+  html.mu-adm .mu-side tr,html.mu-adm .mu-side td{background:transparent!important}
+  html.mu-adm .mu-side td{padding:1px 0!important;font-size:0!important;line-height:0}
+  html.mu-adm .mu-side td>font{display:none!important}
+  html.mu-adm .mu-side td>a{display:flex!important;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;text-decoration:none!important;line-height:1.3}
+  html.mu-adm .mu-side td>a:hover{background:rgba(255,255,255,.08)}
+  html.mu-adm .mu-side td>a img{filter:brightness(0) invert(1);opacity:.8}
+  html.mu-adm .mu-side td>a font,html.mu-adm .mu-side td>a b,html.mu-adm .mu-side td>a span{font:600 13px "Segoe UI",Arial!important;color:#dbe4f0!important}
+  html.mu-adm .mu-side td.head_style_selected>a{background:#2563eb}
+  html.mu-adm .mu-side td.head_style_selected>a font,html.mu-adm .mu-side td.head_style_selected>a b,html.mu-adm .mu-side td.head_style_selected>a span{color:#fff!important}
+  html.mu-adm .mu-side td.head_style_selected>a img{opacity:1}
+  html.mu-adm .mu-side td.mu-sub>a{padding:5px 10px 5px 34px;gap:8px}
+  html.mu-adm .mu-side td.mu-sub>a:has(img){padding-left:22px}
+  html.mu-adm .mu-side td.mu-sub>a img{width:14px;height:14px;opacity:.6}
+  html.mu-adm .mu-side td.mu-sub>a font,html.mu-adm .mu-side td.mu-sub>a span,html.mu-adm .mu-side td.mu-sub>a b{font:500 12.5px "Segoe UI",Arial!important;color:#b9c7da!important}
+  html.mu-adm .mu-side td.mu-sub>a:hover font,html.mu-adm .mu-side td.mu-sub>a:hover span{color:#fff!important}
+  html.mu-adm .mu-side td.subhead_style_selected>a{background:rgba(255,255,255,.1)}
+  html.mu-adm .mu-side td.subhead_style_selected>a font,html.mu-adm .mu-side td.subhead_style_selected>a span{color:#fff!important;font-weight:600!important}
+  html.mu-adm .mu-main{vertical-align:top;background:#eef1f5!important}
+  html.mu-adm .mu-main table{background:transparent!important}
+  html.mu-adm tr.mu-topbar>td{background:#fff!important;border-bottom:1px solid #dde2e8!important;height:42px;padding:0 22px!important}
+  html.mu-adm tr.mu-topbar *{font-family:"Segoe UI",Arial,sans-serif!important}
+  html.mu-adm tr.mu-topbar font,html.mu-adm tr.mu-topbar a,html.mu-adm tr.mu-topbar b{color:#2b3a55!important;font-size:12.5px!important;font-weight:600!important;text-decoration:none!important}
+  html.mu-adm tr.mu-topbar a:hover font{color:#2563eb!important}
+  html.mu-adm tr.mu-tabs,html.mu-adm tr.mu-tabs>td{background:transparent!important;border:0!important}
+  html.mu-adm tr.mu-tabs>td{padding:12px 22px 4px!important}
+  html.mu-adm tr.mu-tabs a{display:inline-block;text-decoration:none!important;background:#fff;border:1px solid #d6dce4;border-radius:999px;padding:4px 12px;margin:0 6px 4px 0}
+  html.mu-adm tr.mu-tabs a,html.mu-adm tr.mu-tabs a font{font:600 12px "Segoe UI",Arial!important;color:#2b3a55!important}
+  html.mu-adm tr.mu-tabs a:hover{border-color:#2563eb}
+  html.mu-adm .mu-foot>td{background:#eef1f5!important;border:0!important}
+  html.mu-adm .mu-foot>td:first-child{background:#0f2747!important}
+  html.mu-adm .mu-foot font{color:#8fa6c6!important;font-size:10.5px!important}
+  .mu-gone{display:none!important}
+  /* page titles */
+  .mu-head2{display:flex;align-items:center;gap:12px;margin:14px 16px 14px;flex-wrap:wrap}
+  .mu-head2 h1{margin:0;font:700 22px "Segoe UI",Arial;color:#1d2530}
+  .mu-head2 .cnt{font:13px "Segoe UI",Arial;color:#6b7686}
+  .mu-head2 a,.mu-head2 a font{font:600 12.5px "Segoe UI",Arial!important;color:#2563eb!important;text-decoration:none!important}
+  .mu-head2 input{margin-left:auto;height:32px;width:260px;border:1px solid #cdd4dd;border-radius:8px;padding:0 10px;font:13px "Segoe UI",Arial;box-sizing:border-box}
+  .mu-ttl{display:block;margin:14px 22px 8px;font:700 22px "Segoe UI",Arial;color:#1d2530}
+  /* lists */
+  .mu-card3{background:#fff;border:1px solid #dde2e8;border-radius:12px;box-shadow:0 1px 3px rgba(20,30,50,.06);overflow-x:auto;margin:0 16px 24px}
+  table.mu-ut{width:100%!important;border-collapse:collapse}
+  table.mu-ut tr{background:#fff!important}
+  table.mu-ut tr:hover td{background:#f5f8ff!important}
+  table.mu-ut td{padding:7px 8px!important;border-bottom:1px solid #eef1f4;background:#fff!important;vertical-align:middle;white-space:nowrap}
+  table.mu-ut td,table.mu-ut td *{font-family:"Segoe UI",Arial,sans-serif!important}
+  table.mu-ut td font{font-size:12.5px!important;color:#1d2530!important}
+  table.mu-ut tr:first-child td{background:#fafbfc!important;position:sticky;top:0;z-index:1;border-bottom:1px solid #e6eaef}
+  table.mu-ut tr:first-child font,table.mu-ut tr:first-child a,table.mu-ut tr:first-child td{font-size:10.5px!important;font-weight:700!important;letter-spacing:.04em;color:#5b6675!important;text-decoration:none!important}
+  table.mu-ut td:first-child a{font-weight:700;text-decoration:none!important}
+  table.mu-ut td:first-child a font{color:#1d4ed8!important}
+  table.mu-ut td.mu-wrap{white-space:normal}
+  table.mu-ut td.mu-num{text-align:right!important}
+  table.mu-ut td.mu-num font{font-weight:600}
+  table.mu-ut td.mu-rt{white-space:normal;min-width:105px;max-width:112px}
+  table.mu-ut td.mu-rt font{font-size:11.5px!important;color:#5b6675!important}
+  table.mu-ut td.mu-name{white-space:normal;min-width:150px}
+  table.mu-ut a.mu-act{display:inline-block;text-decoration:none!important;border:1px solid #d6dce4;border-radius:6px;padding:1px 8px;background:#fff;margin:1px 2px}
+  table.mu-ut a.mu-act,table.mu-ut a.mu-act font{font-size:11.5px!important;font-weight:600!important;color:#2b3a55!important}
+  table.mu-ut a.mu-act:hover{border-color:#2563eb}
+  .mu-tag{display:inline-block;border-radius:999px;padding:1px 9px;font:600 11.5px "Segoe UI",Arial;white-space:nowrap;background:#f1f4f8;color:#4a5563}
+  .mu-tag.adm{background:#f3ecff;color:#6b3fb5}.mu-tag.ag{background:#eef3ff;color:#1d4ed8}
+  .mu-swatch{display:inline-block;width:16px;height:16px;border-radius:5px;border:1px solid #cdd4dd;vertical-align:middle}
+  .mu-yes{display:inline-flex;align-items:center;gap:6px;font:600 12px "Segoe UI",Arial;color:#137a32;white-space:nowrap}.mu-yes i{width:8px;height:8px;border-radius:50%;background:#1aa33c}
+  .mu-no{display:inline-flex;align-items:center;gap:6px;font:600 12px "Segoe UI",Arial;color:#8a94a3;white-space:nowrap}.mu-no i{width:8px;height:8px;border-radius:50%;background:#c4ccd6}
+  .mu-sub2{display:block;font:11.5px "Segoe UI",Arial;color:#7a8494;white-space:normal;max-width:230px}
+  .mu-today{display:inline-block;margin-left:6px;border-radius:999px;padding:0 7px;font:700 10.5px "Segoe UI",Arial;background:#e7f7ec;color:#137a32;vertical-align:1px}
+  .mu-load{display:inline-block;text-decoration:none!important;border:1px solid #2563eb;border-radius:6px;padding:1px 8px;background:#2563eb;color:#fff!important;font:600 11.5px "Segoe UI",Arial;margin-right:4px}
+  .mu-load:hover{background:#1d4ed8}
+  .mu-switch{display:inline-flex;align-items:center;gap:8px;font:600 12.5px "Segoe UI",Arial;color:#2b3a55;cursor:pointer;user-select:none}
+  .mu-switch i{width:34px;height:20px;border-radius:999px;background:#c4ccd6;position:relative;transition:.15s;flex:none}
+  .mu-switch i::after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.15s}
+  .mu-switch.on i{background:#2563eb}.mu-switch.on i::after{left:17px}
+  tr.mu-hidden-row{display:none!important}
+  /* settings forms */
+  html.mu-adm .mu-main,html.mu-adm .mu-main *{font-family:"Segoe UI",Arial,sans-serif}
+  html.mu-adm .mu-form{margin:10px 22px 24px!important;width:calc(100% - 44px)!important;max-width:1150px;background:#fff!important;border:1px solid #dde2e8;border-radius:12px;box-shadow:0 1px 3px rgba(20,30,50,.06);border-collapse:separate;border-spacing:0;overflow:hidden}
+  html.mu-adm .mu-form>tbody>tr{background:#fff!important}
+  html.mu-adm .mu-form>tbody>tr>td{padding:6px 14px!important;border-bottom:1px solid #f0f2f5;background:#fff!important}
+  html.mu-adm .mu-form td font{font-size:13px!important}
+  html.mu-adm .mu-form>tbody>tr>td:first-child font{color:#4a5563!important;font-weight:600}
+  html.mu-adm .mu-form tr.mu-sec>td{background:#f5f8ff!important;border-top:1px solid #e3e9f5;padding:12px 14px!important;text-align:left!important}
+  html.mu-adm .mu-form tr.mu-sec>td,html.mu-adm .mu-form tr.mu-sec>td *{font:700 12px "Segoe UI",Arial!important;letter-spacing:.06em;color:#1d4ed8!important}
+  html.mu-adm .mu-form input[type=text],html.mu-adm .mu-form input[type=password],html.mu-adm .mu-form input:not([type]),html.mu-adm .mu-form select:not([multiple]){height:30px;border:1px solid #cdd4dd;border-radius:7px;padding:0 9px;font:13px "Segoe UI",Arial!important;background:#fff;color:#1d2530;box-sizing:border-box}
+  html.mu-adm .mu-form select[multiple],html.mu-adm .mu-form textarea{border:1px solid #cdd4dd;border-radius:7px;padding:6px 9px;font:13px "Segoe UI",Arial!important;background:#fff;color:#1d2530;box-sizing:border-box}
+  html.mu-adm .mu-form input:focus,html.mu-adm .mu-form select:focus,html.mu-adm .mu-form textarea:focus{outline:2px solid #2563eb;outline-offset:0;border-color:#2563eb}
+  html.mu-adm .mu-form input[type=button]{height:30px;border:1px solid #c4ccd6;border-radius:7px;background:#fff;font:600 12px "Segoe UI",Arial;padding:0 12px;cursor:pointer}
+  html.mu-adm .mu-form img[src*=help]{width:15px;height:15px;opacity:.5;vertical-align:middle}
+  html.mu-adm .mu-form table td{padding:2px 6px!important;border:0!important}
+  html.mu-adm .mu-form table td font{font-size:12px!important}
+  html.mu-adm .mu-main input[type=submit]{background:#2563eb!important;color:#fff!important;border:0!important;border-radius:8px;height:36px;padding:0 22px;font:600 13px "Segoe UI",Arial!important;cursor:pointer}
+  html.mu-adm .mu-ctabs{display:flex!important;flex-wrap:wrap;gap:6px;margin:12px 22px 4px;background:transparent!important}
+  html.mu-adm .mu-ctabs td{background:transparent!important;border:0!important;padding:0!important}
+  html.mu-adm .mu-ctabs a{display:inline-block;text-decoration:none!important;background:#fff;border:1px solid #d6dce4;border-radius:8px;padding:5px 12px}
+  html.mu-adm .mu-ctabs a,html.mu-adm .mu-ctabs a font{font:600 12px "Segoe UI",Arial!important;color:#2b3a55!important}
+  html.mu-adm .mu-ctabs td.mu-on a{background:#2563eb;border-color:#2563eb}
+  html.mu-adm .mu-ctabs td.mu-on a,html.mu-adm .mu-ctabs td.mu-on a font{color:#fff!important}
+  /* script editor */
+  .mu-editor{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+  html.mu-adm .mu-editor textarea{width:100%!important;height:520px!important;box-sizing:border-box;border:1px solid #cdd4dd;border-radius:9px;padding:10px 12px;font:12.5px/1.5 Consolas,"Cascadia Mono",monospace!important;background:#0f172a;color:#e2e8f0;resize:vertical}
+  .mu-pv2{border:1px solid #dde2e8;border-radius:9px;overflow:hidden;display:flex;flex-direction:column;background:#f8fafc}
+  .mu-pv2 b.h{display:flex;align-items:center;gap:8px;padding:8px 12px;font:700 11px "Segoe UI",Arial;letter-spacing:.06em;color:#5b6675;border-bottom:1px solid #e6eaef;background:#fff}
+  .mu-pv2 b.h i{width:8px;height:8px;border-radius:50%;background:#1aa33c}
+  .mu-pv2 iframe{flex:1;width:100%;height:500px;border:0;background:#fff}
+  .mu-usedcard{margin:0 22px 16px;background:#fff;border:1px solid #dde2e8;border-radius:12px;padding:10px 16px;font:13px "Segoe UI",Arial;max-width:1120px}
+  .mu-usedcard .mu-uh{display:block;font:700 11px "Segoe UI",Arial!important;letter-spacing:.05em;color:#5b6675!important;margin:8px 0 2px}
+  .mu-usedcard a{color:#1d4ed8!important;font-weight:600;text-decoration:none!important}
+  html.mu-adm a.mu-del{display:inline-block;margin:6px 0 6px 22px;color:#c4252b!important;font:600 12.5px "Segoe UI",Arial!important;border:1px solid #f0b4b6;border-radius:8px;padding:6px 12px;text-decoration:none!important;background:#fff}
+  html.mu-adm a.mu-del font{color:#c4252b!important;font:inherit!important}
+  /* reports home */
+  .mu-page{padding:20px 26px 10px;max-width:1500px}
+  .mu-title{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}
+  .mu-title h1{margin:0;font:700 22px "Segoe UI",Arial;color:#1d2530}
+  .mu-title span{font:13px "Segoe UI",Arial;color:#6b7686}
+  .mu-title a{font:600 12.5px "Segoe UI",Arial!important;color:#2563eb!important;text-decoration:none!important;background:#eef3ff;border-radius:999px;padding:3px 10px}
+  .mu-title a font{color:#2563eb!important;font:inherit!important}
+  .mu-grid{display:flex;gap:16px;align-items:flex-start}
+  .mu-col{flex:1;display:flex;flex-direction:column;gap:16px;min-width:0}
+  .mu-cardx{background:#fff;border:1px solid #dde2e8;border-radius:12px;box-shadow:0 1px 3px rgba(20,30,50,.06);overflow:hidden}
+  .mu-cardx h2{margin:0;padding:12px 16px;font:700 12px "Segoe UI",Arial;letter-spacing:.06em;text-transform:uppercase;color:#4a5563;border-bottom:1px solid #eef1f4;display:flex;align-items:center;gap:8px}
+  .mu-cardx h2 i{flex:none;width:8px;height:8px;border-radius:2px;background:var(--c,#2563eb)}
+  .mu-cardx ul{list-style:none;margin:0;padding:6px 8px 10px}
+  .mu-cardx li{display:flex;align-items:center;flex-wrap:wrap;gap:4px;border-radius:7px;color:#b6bec8;font-size:0}
+  .mu-cardx li:hover{background:#f3f6fb}
+  .mu-cardx li br{display:none}
+  .mu-cardx li>font{font-size:0!important;display:contents}
+  .mu-cardx li a{text-decoration:none!important;display:block;padding:6px 8px}
+  .mu-cardx li a font{font:13px "Segoe UI",Arial!important;color:#1d2530!important}
+  .mu-cardx li a:hover font{color:#2563eb!important}
+  .mu-cardx li a~a,.mu-cardx li>font>a{padding:0 2px}
+  .mu-cardx li>font>a font,.mu-cardx li a~a font{font-size:11.5px!important;color:#2563eb!important;background:#eef3ff;border-radius:5px;padding:1px 6px}
+  .mu-servers{margin-top:20px}
+  .mu-servers table.mu-sv{border-collapse:collapse;width:100%;background:#fff!important;border:0!important}
+  .mu-servers table.mu-sv tr{background:#fff!important}
+  .mu-servers table.mu-sv td{padding:9px 14px!important;border:0!important;border-bottom:1px solid #eef1f4!important;background:#fff!important}
+  .mu-servers table.mu-sv tr:first-child td{background:#fafbfc!important}
+  .mu-servers table.mu-sv tr:first-child font,.mu-servers table.mu-sv tr:first-child a{font:700 11px "Segoe UI",Arial!important;letter-spacing:.05em;color:#5b6675!important;text-transform:uppercase}
+  .mu-servers table.mu-sv td font,.mu-servers table.mu-sv td a{font:13px "Segoe UI",Arial!important;color:#1d2530!important;text-decoration:none!important}
+  .mu-servers table.mu-sv td a,.mu-servers table.mu-sv td a font{color:#2563eb!important}
+  .mu-pill{display:inline-block;border-radius:999px;padding:1px 9px;font:600 11.5px "Segoe UI",Arial;background:#e7f7ec;color:#137a32}
+  .mu-pill.warn{background:#fff4dd;color:#7a4b00}.mu-pill.hot{background:#fde8e8;color:#b42318}
+  /* admin tiles */
+  html.mu-adm tr.adminmenu_style_selected{display:block;background:transparent!important}
+  html.mu-adm tr.adminmenu_style_selected>td{display:none}
+  html.mu-adm tr.adminmenu_style_selected>td:last-child{display:block;padding:0!important}
+  html.mu-adm tr.adminmenu_style_selected>td:last-child>a{display:flex!important;align-items:center;gap:12px;background:#fff;border:1px solid #dde2e8;border-radius:12px;padding:12px 14px;margin:0 0 10px;text-decoration:none!important;box-shadow:0 1px 2px rgba(20,30,50,.05);transition:.12s}
+  html.mu-adm tr.adminmenu_style_selected>td:last-child>a:hover{border-color:#2563eb;box-shadow:0 4px 12px rgba(37,99,235,.12)}
+  html.mu-adm tr.adminmenu_style_selected>td:last-child>a span{font:600 14px "Segoe UI",Arial!important;color:#1d2530!important}
+  html.mu-adm .mu-ico{width:34px;height:34px;border-radius:9px;background:#eef3ff;display:flex;align-items:center;justify-content:center;flex:none}
+  html.mu-adm .mu-ico img{width:22px!important;height:22px!important;opacity:.85}
+  html.mu-adm table.mu-grid4{width:calc(100% - 32px)!important;margin:6px 16px 30px!important;table-layout:fixed}
+  html.mu-adm td.mu-col4{padding:0 6px!important;vertical-align:top}`;
+
+  function adminUI() {
+    const top = document.querySelector('body>center>table');
+    const cells = top && top.rows[0] ? [...top.rows[0].cells] : [];
+    if (cells.length < 2 || !/ADMINISTRATION/i.test(cells[0].textContent)) return false;   // not Vici's admin frame
+    const [side, main] = cells;
+    const page = new URLSearchParams(location.search).get('ADD') || '';
+
+    // Lists: always open with the lead counts (Vici's own "show list leads counts" link)
+    if (page === '100') {
+      const cl = [...main.querySelectorAll('a')].find((a) => /show list leads counts/i.test(a.textContent));
+      if (cl && cl.href && cl.href !== location.href) { location.replace(cl.href); return 'redirect'; }
+    }
+
+    document.documentElement.classList.add('mu-adm');
+    const st = document.createElement('style'); st.id = 'mu-adm-style'; st.textContent = ADMIN_CSS;
+    document.head.appendChild(st);
+
+    // ---------- frame: sidebar, top bar, link row, footer ----------
+    side.classList.add('mu-side'); main.classList.add('mu-main');
+    side.removeAttribute('bgcolor'); side.removeAttribute('width'); main.removeAttribute('width'); main.removeAttribute('bgcolor');
+    [...side.querySelectorAll('td')].filter((td) => /subhead_style/.test(td.className) ||
+      (!td.className && td.querySelector('a') && !td.querySelector('img') && td.textContent.trim())).forEach((td) => { td.classList.add('mu-sub'); td.closest('tr').removeAttribute('bgcolor'); });
+    [...top.rows].slice(1).forEach((r) => r.classList.add('mu-foot'));
+    const bar = [...main.querySelectorAll('tr')].filter((tr) => /\bHOME\b/.test(tr.textContent) && /Logout/i.test(tr.textContent) && tr.cells.length <= 3 && !tr.querySelector('table')).pop();
+    let tabs = null;
+    if (bar) {
+      bar.classList.add('mu-topbar'); bar.querySelectorAll('[bgcolor]').forEach((e) => e.removeAttribute('bgcolor'));
+      const bt = bar.closest('table'); bt.removeAttribute('bgcolor'); bt.removeAttribute('width'); bt.style.width = '100%';
+      tabs = [...bt.rows].find((r) => r !== bar && r.querySelectorAll('a').length >= 2 && !r.querySelector('table,input,select,textarea') && /\|/.test(r.textContent));
+      if (tabs) {
+        tabs.classList.add('mu-tabs'); tabs.querySelectorAll('[bgcolor]').forEach((e) => e.removeAttribute('bgcolor'));
+        const w = document.createTreeWalker(tabs, NodeFilter.SHOW_TEXT); let n;
+        while ((n = w.nextNode())) n.nodeValue = n.nodeValue.replace(/\|/g, ' ');
+      }
+      [...bt.rows].filter((r) => r !== bar && r !== tabs && !r.querySelector('a,input,select,textarea,table,img') && !r.textContent.replace(/ /g, ' ').trim()).forEach((r) => r.classList.add('mu-gone'));
+    }
+    const inPage = (e) => !e.closest('.mu-side,tr.mu-topbar,tr.mu-tabs');
+    const bigIcons = () => [...main.querySelectorAll('img')].filter((i) => inPage(i) && (i.getAttribute('width') | 0) >= 30 && !i.closest('.mu-grid4,.mu-card3,.mu-form,.mu-page'));
+
+    // ---------- Reports home ----------
+    const uls = [...main.querySelectorAll('ul')];
+    const heading = (ul) => { let b = ul.previousElementSibling; while (b && b.tagName !== 'B') b = b.previousElementSibling; return b; };
+    if (uls.length >= 3 && uls.some((ul) => /Real-Time Reports/i.test((heading(ul) || {}).textContent || ''))) { reportsHome(main, uls, heading, bar); return true; }
+
+    // ---------- Admin tiles ----------
+    const tiles = [...main.querySelectorAll('tr.adminmenu_style_selected')];
+    if (tiles.length >= 6) {
+      tiles.forEach((r) => { const img = r.cells[0] && r.cells[0].querySelector('img'), a = r.cells[1] && r.cells[1].querySelector('a');
+        if (img && a) { const b = document.createElement('span'); b.className = 'mu-ico'; b.appendChild(img.cloneNode()); a.insertBefore(b, a.firstChild); } });
+      const grid = tiles[0].closest('table').parentElement.closest('table');
+      if (grid) {
+        grid.classList.add('mu-grid4'); grid.removeAttribute('width');
+        [...grid.rows[0].cells].forEach((c) => { c.removeAttribute('width'); if (c.querySelector('tr.adminmenu_style_selected')) c.classList.add('mu-col4'); else c.style.display = 'none'; });
+        for (let p = grid.parentElement; p && p !== main; p = p.parentElement) { p.removeAttribute('align'); if (p.tagName === 'TABLE') { p.removeAttribute('width'); p.style.width = '100%'; } }
+      }
+      retitle(main, /^\s*Administration\s*$/, 'Administration');
+      bigIcons().forEach((i) => i.classList.add('mu-gone'));
+      return true;
+    }
+
+    // ---------- lists (Vici's black header row) ----------
+    const lt = [...main.querySelectorAll('table')].find((t) => !t.querySelector('table') && t.rows.length > 1 && !t.closest('form') &&
+      /^black$/i.test((t.rows[0].getAttribute('bgcolor') || (t.rows[0].cells[0] && t.rows[0].cells[0].getAttribute('bgcolor')) || '').trim()));
+    if (lt) listPage(main, lt, page, bigIcons);
+
+    // ---------- settings forms ----------
+    const forms = [...main.querySelectorAll('form')].filter((f) => f.querySelectorAll('input:not([type=hidden]),select,textarea').length >= 4);
+    forms.forEach((form) => {
+      const ft = [...form.querySelectorAll('table')].filter((t) => !t.classList.contains('mu-ut'))
+        .sort((a, b) => b.querySelectorAll('input,select,textarea').length - a.querySelectorAll('input,select,textarea').length)[0];
+      if (!ft || ft.closest('.mu-form')) return;
+      ft.classList.add('mu-form'); ft.removeAttribute('width'); ft.removeAttribute('bgcolor');
+      [...ft.rows].forEach((r) => {
+        const t = r.textContent.trim();
+        if (r.cells.length === 1 && !r.querySelector('input,select,textarea') && t && t.length < 80 && t === t.toUpperCase() && /[A-Z]{3}/.test(t)) r.classList.add('mu-sec');
+        r.removeAttribute('bgcolor'); [...r.cells].forEach((c) => c.removeAttribute('bgcolor'));
+      });
+      const ta = form.querySelector('textarea[name=script_text]');
+      if (ta) scriptEditor(ta);
+    });
+    if (forms.length) {
+      // a settings page's own tab row (e.g. a campaign: Basic, Detail, Statuses, HotKeys…)
+      const ct = [...main.querySelectorAll('table')].find((t) => !t.querySelector('table,input,select') && t.rows.length === 1 && t.rows[0].querySelectorAll('a').length >= 5 && !t.closest('.mu-form,tr.mu-topbar,tr.mu-tabs'));
+      if (ct) {
+        ct.querySelectorAll('[bgcolor]').forEach((e) => e.removeAttribute('bgcolor')); ct.removeAttribute('bgcolor'); ct.removeAttribute('width');
+        const row = ct.rows[0]; row.classList.add('mu-ctabs');
+        [...row.cells].forEach((c) => { if (!c.querySelector('a')) c.style.display = 'none'; });
+        // the tab you're on: the one whose link points at this page's SUB (none = Detail)
+        const sub = new URLSearchParams(location.search).get('SUB') || '';
+        const subOf = (c) => { const a = c.querySelector('a'); return a ? new URLSearchParams((a.getAttribute('href') || '').split('?')[1] || '').get('SUB') || '' : null; };
+        const on = [...row.cells].find((c) => sub && subOf(c) === sub) || (!sub && [...row.cells].find((c) => /^\s*Detail\s*$/i.test(c.textContent)));
+        if (on) on.classList.add('mu-on');
+        // the campaign's id in bold, then ":" -> "Campaign MortSB"
+        const b = [...main.querySelectorAll('b')].find((e) => inPage(e) && !e.closest('.mu-form,.mu-ctabs') && /^\s*[A-Za-z0-9_-]+\s*$/.test(e.textContent) && /^\s*:/.test((e.nextSibling && e.nextSibling.nodeValue) || ''));
+        if (b && ct.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING) { const h = document.createElement('span'); h.className = 'mu-ttl'; h.textContent = 'Campaign ' + b.textContent.trim(); b.parentNode.insertBefore(h, b); b.style.display = 'none'; b.nextSibling.nodeValue = b.nextSibling.nodeValue.replace(':', ''); }
+      }
+      // page titles: change only the words
+      retitle(main, /^\s*MODIFY A USERS RECORD:?/i, 'User settings');
+      retitle(main, /^\s*MODIFY A SCRIPT\s*$/i, 'Edit script');
+      retitle(main, /^\s*MODIFY A (LIST|LISTS RECORD)[^:]*:?/i, 'List settings');
+      [...main.querySelectorAll('a')].filter((a) => /^\s*DELETE THIS /i.test(a.textContent)).forEach((a) => { a.classList.add('mu-del'); const f = a.querySelector('font') || a; f.textContent = f.textContent.trim().charAt(0) + f.textContent.trim().slice(1).toLowerCase(); });
+    }
+    bigIcons().filter((i) => !i.closest('form')).forEach((i) => i.classList.add('mu-gone'));
+    return true;
+  }
+
+  // change a page title's words into a heading (never touches the elements around it)
+  function retitle(main, re, text) {
+    const w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode())) {
+      if (!re.test(n.nodeValue) || n.parentElement.closest('.mu-side,tr.mu-topbar,tr.mu-tabs,.mu-form,.mu-grid4')) continue;
+      const h = document.createElement('span'); h.className = 'mu-ttl'; h.textContent = text;
+      n.parentNode.insertBefore(h, n); n.nodeValue = n.nodeValue.replace(re, '');
+      return true;
+    }
+    return false;
+  }
+
+  function listPage(main, lt, page, bigIcons) {
+    const TITLES = { '0A': 'Users', '10': 'Campaigns', '100': 'Lists', '1000000': 'Scripts', '10000000': 'Filters', '1001': 'Inbound groups', '100000': 'User groups', '10000': 'Remote agents' };
+    let title = TITLES[page] || '';
+    // the old "XXX LISTINGS:" words: take them as the title if this page isn't one we named, and keep their link
+    let toggle = null;
+    const w = document.createTreeWalker(main, NodeFilter.SHOW_TEXT); let n;
+    while ((n = w.nextNode())) {
+      const m = n.nodeValue.match(/^\s*([A-Z][A-Z \-]+?)\s+LISTINGS:?\s*$/);
+      if (!m || n.parentElement.closest('.mu-side,tr.mu-topbar,tr.mu-tabs')) continue;
+      if (!title) title = m[1].charAt(0) + m[1].slice(1).toLowerCase();
+      n.nodeValue = '';
+      let p = n.parentElement; for (let i = 0; i < 3 && p && !toggle; i++, p = p.parentElement) toggle = [...p.querySelectorAll('a')].find((a) => /^\s*show /i.test(a.textContent) && !lt.contains(a));
+      break;
+    }
+    bigIcons().filter((i) => !lt.contains(i)).forEach((i) => i.classList.add('mu-gone'));
+    const hdr = document.createElement('div'); hdr.className = 'mu-head2';
+    hdr.innerHTML = '<h1></h1><span class="cnt"></span>'; hdr.querySelector('h1').textContent = title || 'List';
+    const count = lt.rows.length - 1;
+    hdr.querySelector('.cnt').textContent = count + ' ' + (title || 'rows').toLowerCase();
+    if (toggle && page !== '100') hdr.appendChild(toggle); else if (toggle) toggle.classList.add('mu-gone');
+    const q = document.createElement('input'); q.placeholder = 'Filter…'; q.setAttribute('autocomplete', 'off'); hdr.appendChild(q);
+    const card = document.createElement('div'); card.className = 'mu-card3';
+    const anchor = lt.closest('center') || lt;
+    anchor.parentNode.insertBefore(hdr, anchor); anchor.parentNode.insertBefore(card, anchor); card.appendChild(lt);
+    lt.classList.add('mu-ut'); lt.removeAttribute('width');
+    const head = [...lt.rows[0].cells].map((c) => c.textContent.replace(/\s+/g, ' ').trim().toUpperCase());
+    const colorOf = [...lt.rows].map((r) => { const i = head.indexOf('COLOR'); return i >= 0 && r.cells[i] ? r.cells[i].getAttribute('bgcolor') : null; });
+    lt.removeAttribute('bgcolor'); lt.querySelectorAll('[bgcolor]').forEach((e) => e.removeAttribute('bgcolor'));
+    const hide = (name) => { const i = head.indexOf(name); if (i >= 0) [...lt.rows].forEach((r) => r.cells[i] && r.cells[i].classList.add('mu-gone')); };
+    const tag = (c, cls) => { const t = c.textContent.trim(); if (!t || c.querySelector('a')) return; c.textContent = ''; const s = document.createElement('span'); s.className = 'mu-tag' + (cls ? ' ' + cls : ''); s.textContent = t; c.appendChild(s); };
+    const today = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+    let leads = 0, live = 0;
+    const ni = head.indexOf('LIST NAME'), di = head.indexOf('DESCRIPTION'), idi = 0;
+    [...lt.rows].forEach((r, ri) => {
+      head.forEach((h, i) => {
+        const c = r.cells[i]; if (!c) return;
+        if (h === 'RTIME') c.classList.add('mu-rt');
+        if (h === 'LEADS COUNT') c.classList.add('mu-num');
+        if (/NAME$/.test(h) && h !== 'FILTER NAME') c.classList.add('mu-wrap');
+        if (!ri) return;
+        if (h === 'ACTIVE') { const y = /^Y/i.test(c.textContent.trim()); c.innerHTML = `<span class="${y ? 'mu-yes' : 'mu-no'}"><i></i>${y ? 'Active' : 'Inactive'}</span>`; }
+        else if (h === 'GROUP' && page === '0A') { const t = c.textContent.trim(); tag(c, /admin/i.test(t) ? 'adm' : /agent/i.test(t) ? 'ag' : ''); }
+        else if (/^(GROUP|DIAL METHOD|LEAD ORDER|ADMIN GROUP)$/.test(h) || (h === 'CAMPAIGN' && page === '100')) tag(c);
+        else if (h === 'COLOR') { c.textContent = ''; const s = document.createElement('span'); s.className = 'mu-swatch'; s.style.background = colorOf[ri] || '#fff'; c.appendChild(s); }
+        else if (h === 'RTIME') { const tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT); let m; while ((m = tw.nextNode())) m.nodeValue = m.nodeValue.replace(/-/g, '-​'); }
+        else if (h === 'LEADS COUNT') { const tw = document.createTreeWalker(c, NodeFilter.SHOW_TEXT); let m; while ((m = tw.nextNode())) if (/^\s*\d+\s*$/.test(m.nodeValue)) { leads += +m.nodeValue; m.nodeValue = Number(m.nodeValue).toLocaleString(); } }
+        else if (h === 'LAST CALL DATE' && c.textContent.trim().startsWith(today)) { const t = document.createElement('span'); t.className = 'mu-today'; t.textContent = 'Today'; c.appendChild(t); }
+      });
+      if (!ri) return;
+      r.querySelectorAll('a').forEach((a) => {
+        const t = a.textContent.trim();
+        if (/^(MODIFY|STATS|STATUS|TIME|DELETE|LEADS|VIEW|SHOW)$/i.test(t)) { a.classList.add('mu-act'); const f = a.querySelector('font') || a; f.textContent = t.charAt(0) + t.slice(1).toLowerCase(); }
+      });
+      if (page === '100' && ni >= 0) {
+        const nameC = r.cells[ni], descC = di >= 0 ? r.cells[di] : null;
+        nameC.classList.add('mu-name');
+        if (/^\s*live leads\s*$/i.test(nameC.textContent)) { r.dataset.live = '1'; live++; }
+        if (descC) { const d = descC.textContent.trim(); if (d && d.toLowerCase() !== nameC.textContent.trim().toLowerCase()) { const s = document.createElement('span'); s.className = 'mu-sub2'; s.textContent = d; nameC.appendChild(s); } }
+        const mi = head.indexOf('MODIFY'), id = r.cells[idi].textContent.trim();
+        if (mi >= 0 && r.cells[mi] && /^\d+$/.test(id)) { const a = document.createElement('a'); a.className = 'mu-load'; a.textContent = 'Load leads'; a.href = 'admin_listloader_fourth_gen.php#mu-list=' + encodeURIComponent(id); r.cells[mi].insertBefore(a, r.cells[mi].firstChild); }
+      }
+    });
+    if (page === '10') hide('DIAL STATUSES');
+    if (page === '100') {
+      hide('DESCRIPTION'); hide('CALL TIME');
+      if (ni >= 0) lt.rows[0].cells[ni].classList.add('mu-name');
+      hdr.querySelector('.cnt').textContent = count + ' lists' + (leads ? ' · ' + leads.toLocaleString() + ' leads' : '');
+      if (live) {
+        const sw = document.createElement('span'); sw.className = 'mu-switch on'; sw.innerHTML = '<i></i><span></span>';
+        const lbl = sw.querySelector('span');
+        const apply = () => { const on = sw.classList.contains('on'); lbl.textContent = on ? `Live Leads hidden (${live})` : `Showing Live Leads (${live})`;
+          [...lt.rows].forEach((r) => r.classList.toggle('mu-hidden-row', on && r.dataset.live === '1')); };
+        sw.addEventListener('click', () => { sw.classList.toggle('on'); apply(); });
+        hdr.insertBefore(sw, q); apply();
+      }
+    }
+    q.addEventListener('input', () => { const v = q.value.toLowerCase(); [...lt.rows].slice(1).forEach((r) => { r.style.display = !v || r.textContent.toLowerCase().includes(v) ? '' : 'none'; }); });
+  }
+
+  function scriptEditor(ta) {
+    const ed = document.createElement('div'); ed.className = 'mu-editor';
+    ta.parentNode.insertBefore(ed, ta); ed.appendChild(ta);
+    const pv = document.createElement('div'); pv.className = 'mu-pv2';
+    pv.innerHTML = '<b class="h"><i></i>LIVE PREVIEW · sample lead</b><iframe sandbox=""></iframe>';
+    ed.appendChild(pv);
+    const SAMPLE = { first_name: 'John', last_name: 'Sample', fullname: 'Agent Name', address1: '123 Main St', city: 'Springfield', state: 'IL', postal_code: '62701', phone_number: '5555550100', user: '1001' };
+    const render = () => { pv.querySelector('iframe').srcdoc = '<!doctype html><body style="margin:12px;font-family:Arial">' + ta.value.replace(/--A--([a-z0-9_]+)--B--/gi, (m, k) => SAMPLE[k] || ('[' + k + ']')) + '</body>'; };
+    ta.addEventListener('input', render); render();
+    // "… USING THIS SCRIPT" sections into one card
+    const main = ta.closest('.mu-main'); const form = ta.closest('form');
+    const hb = [...main.querySelectorAll('b,font')].find((e) => /^\s*CAMPAIGNS USING THIS SCRIPT:?\s*$/.test(e.textContent) && !e.closest('form'));
+    if (hb) {
+      let start = hb; while (start.parentElement && start.parentElement !== form.parentElement && !start.parentElement.contains(form)) start = start.parentElement;
+      const box = start.parentElement, card = document.createElement('div'); card.className = 'mu-usedcard';
+      const nodes = []; for (let e = start; e; e = e.nextSibling) { if (e.nodeType === 1 && /DELETE THIS SCRIPT|Admin changes/i.test(e.textContent) && !/USING THIS SCRIPT/.test(e.textContent)) break; nodes.push(e); }
+      box.insertBefore(card, start); nodes.forEach((x) => card.appendChild(x));
+      [...card.querySelectorAll('b,font')].filter((e) => /USING THIS SCRIPT/.test(e.textContent) && !e.querySelector('b,font')).forEach((e) => e.classList.add('mu-uh'));
+    }
+  }
+
+  function reportsHome(main, uls, heading, bar) {
+    const holder = uls[0].closest('table');
+    const pg = document.createElement('div'); pg.className = 'mu-page';
+    pg.innerHTML = '<div class="mu-title"><h1>Reports</h1><span>Server stats and reports</span></div><div class="mu-grid"></div>';
+    const grid = pg.querySelector('.mu-grid');
+    holder.parentNode.insertBefore(pg, holder);
+    const colors = ['#2563eb', '#7c3aed', '#0f9d58', '#d97706', '#0891b2'];
+    const cards = uls.map((ul, i) => {
+      const b = heading(ul), card = document.createElement('div'); card.className = 'mu-cardx'; card.style.setProperty('--c', colors[i % colors.length]);
+      card.innerHTML = '<h2><i></i><span></span></h2>'; card.querySelector('span').textContent = b ? b.textContent.trim() : ''; card.appendChild(ul); return card;
+    });
+    const cols = [0, 1, 2].map(() => { const d = document.createElement('div'); d.className = 'mu-col'; grid.appendChild(d); return d; });
+    const size = (c) => c.querySelectorAll('li').length + 2, h = [0, 0, 0];
+    cards.slice().sort((a, b) => size(b) - size(a)).forEach((c) => { const i = h.indexOf(Math.min(...h)); h[i] += size(c); cols[i].appendChild(c); });
+    cols.forEach((col) => [...col.children].sort((a, b) => cards.indexOf(a) - cards.indexOf(b)).forEach((c) => col.appendChild(c)));
+    holder.classList.add('mu-gone');
+    const sum = [...main.querySelectorAll('a')].find((a) => /System Summary/i.test(a.textContent) && !pg.contains(a));
+    if (sum) { pg.querySelector('.mu-title').appendChild(sum); sum.querySelectorAll('font').forEach((f) => { f.textContent = 'System summary'; }); if (!sum.querySelector('font')) sum.textContent = 'System summary'; }
+    [...main.querySelectorAll('img')].filter((im) => !pg.contains(im) && !(bar && bar.contains(im))).forEach((im) => {
+      const tr = im.closest('tr'), td = im.closest('td');
+      (tr && !tr.contains(pg) && !tr.querySelector('ul') ? tr : (td && !td.contains(pg) ? td : im)).classList.add('mu-gone');
+    });
+    [...main.querySelectorAll('font,b,span')].filter((e) => !pg.contains(e) && (/^\s*Server Stats and Reports\s*$/i.test(e.textContent) || /^[\s ]*\(\s*\)[\s ]*$/.test(e.textContent))).forEach((e) => e.classList.add('mu-gone'));
+    const sv = [...main.querySelectorAll('table')].find((t) => !t.querySelector('table') && t.rows[0] && /SERVER/.test(t.rows[0].textContent) && /LOAD/.test(t.rows[0].textContent));
+    if (sv) {
+      const box = document.createElement('div'); box.className = 'mu-cardx mu-servers'; box.innerHTML = '<h2><i></i>Servers</h2>';
+      pg.appendChild(box); box.appendChild(sv); sv.classList.add('mu-sv'); sv.removeAttribute('width'); sv.setAttribute('border', '0');
+      const hd = [...sv.rows[0].cells].map((c) => c.textContent.trim().toUpperCase());
+      const li = hd.findIndex((x) => /^LOAD/.test(x)), di = hd.findIndex((x) => /^DISK/.test(x));
+      [...sv.rows].slice(1).forEach((r) => [[li, (v) => parseInt(String(v).split('-').pop(), 10)], [di, (v) => parseInt(v, 10)]].forEach(([i, num]) => {
+        const c = r.cells[i]; if (i < 0 || !c) return;
+        const t = c.textContent.trim(), nn = num(t);
+        const pill = document.createElement('span'); pill.className = 'mu-pill' + (nn >= 85 ? ' hot' : nn >= 60 ? ' warn' : ''); pill.textContent = t;
+        c.textContent = ''; c.appendChild(pill);
+      }));
+    }
+  }
+
   // =====================================================================
   function leadLoader() {
     const KEY = { 'TITLE': 'FICO', 'ADDRESS2': 'Loan amount', 'ADDRESS3': 'Cash out amount', 'PROVINCE': 'Value',
@@ -323,6 +747,9 @@ function readHomesPage(doc) {
       const pick = (name, test) => { const sel = document.querySelector(`select[name=${name}]`); const o = sel && [...sel.options].find(test); if (o) sel.value = o.value, o.selected = true; };
       pick('phone_code_override', (o) => /^\s*1\s*-\s*USA\s*$/i.test(o.textContent));
       pick('postalgmt', (o) => o.value === 'POSTAL');
+      // came from a list's "Load leads" button: that list is picked for you
+      const want = (location.hash.match(/mu-list=([^&]+)/) || [])[1];
+      if (want) pick('list_id_override', (o) => o.value.replace(/[\\'"]/g, '') === decodeURIComponent(want));
       const show = (p, msg) => {
         pv.innerHTML = !p ? `<div class="mu-head"><h1>Your file</h1></div><div class="mu-empty">${msg || 'Pick a file to see what\'s in it.'}</div>`
           : `<div class="mu-head"><h1>Your file</h1>${chipsFor(p, `<span class="mu-chip"><b>${p.headers.length}</b> columns</span>`)}</div>
