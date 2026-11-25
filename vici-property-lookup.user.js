@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      14.4
+// @version      14.5
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -17,7 +17,7 @@
 // @connect      www.zillow.com
 // @connect      www.trulia.com
 // @connect      www.realtor.com
-// @run-at       document-idle
+// @run-at       document-start
 // @homepageURL  https://github.com/midnight-batman-4827/vici-scripts
 // @updateURL    https://raw.githubusercontent.com/midnight-batman-4827/vici-scripts/main/vici-property-lookup.user.js
 // @downloadURL  https://raw.githubusercontent.com/midnight-batman-4827/vici-scripts/main/vici-property-lookup.user.js
@@ -29,6 +29,23 @@
   // the extension wins and the Tampermonkey copy steps aside (the extension marks the page).
   const IS_EXT = typeof __VP_EXT !== 'undefined';
   const stepAside = () => !IS_EXT && document.documentElement.hasAttribute('data-vprop-ext');
+
+  // Lead loader: hide the page the moment it starts loading and show it once the new look is on,
+  // so Vici's old screen never flashes. (Shown after 3 seconds no matter what.)
+  const LL_PAGE = /\/vicidial\/admin_listloader/.test(location.pathname);
+  let reveal = () => {};
+  if (LL_PAGE) {
+    const ph = document.createElement('style');
+    ph.textContent = 'html{visibility:hidden!important}';
+    const root = () => document.head || document.documentElement;
+    if (root()) root().appendChild(ph);
+    else new MutationObserver((m, o) => { if (root()) { root().appendChild(ph); o.disconnect(); } }).observe(document, { childList: true, subtree: true });
+    reveal = () => ph.remove();
+    setTimeout(reveal, 3000);
+  }
+
+  // everything else starts once the page's HTML is in (same moment as before)
+  function __main() {
 
 function readHomesPage(doc) {
   const txt = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
@@ -201,7 +218,7 @@ function readHomesPage(doc) {
 
   if (/(^|\.)homes\.com$/.test(location.hostname)) { setTimeout(() => { if (!stepAside()) homesWorker(); }, IS_EXT ? 0 : 1500); return; }
   // the lead loader (admins only) gets its own look; nothing else of this script runs there
-  if (/\/vicidial\/admin_listloader/.test(location.pathname)) { setTimeout(() => { if (!stepAside()) leadLoader(); }, IS_EXT ? 0 : 300); return; }
+  if (LL_PAGE) { try { if (!stepAside()) leadLoader(); } finally { reveal(); } return; }
 
   // =====================================================================
   //  Lead loader (admins only: agents can't open this page). Modern look, Mortgageusa's names for the
@@ -2559,4 +2576,6 @@ function readHomesPage(doc) {
       else renderAll();
     }, 300);
   });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', __main); else __main();
 })();
