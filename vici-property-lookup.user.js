@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      16.1
+// @version      16.4
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -2734,7 +2734,7 @@ function readHomesPage(doc) {
         #vl-livebadge.dead{background:#c4252b;color:#fff}#vl-livebadge.dead i{background:#ffd5d5}
         .vl-full{left:0!important;top:0!important;width:calc(100vw / var(--vlz, 1))!important;height:calc(100vh / var(--vlz, 1))!important;background:#fff;z-index:2147483000!important}
         .vl-full>table{width:100%!important;height:100%!important}
-        html.vl-takeover #vprop-tabbar,html.vl-takeover #vprop-card,html.vl-takeover #vprop-screen,html.vl-takeover [id^="vl-"]:not(#vl-hidden):not(#vl-style):not(#vl-pitch-style),
+        html.vl-takeover #vprop-tabbar,html.vl-takeover #vprop-card,html.vl-takeover #vprop-screen,html.vl-takeover [id^="vl-"]:not(#vl-hidden):not(#vl-style):not(#vl-pitch-style):not(#vl-dispo),
         html.vl-takeover #AgentViewSpan,html.vl-takeover #AgentViewLinkSpan,html.vl-takeover #webphoneSpan,html.vl-takeover #SecondSspan{visibility:hidden!important}
         html.vl-takeover #vl-pitch{display:none!important}
         #vl-hklist{margin-top:8px;width:166px;box-sizing:border-box;background:#ffeebb;border:1px solid #e3c77a;border-radius:8px;padding:6px 8px;font:12px/1.5 Arial,sans-serif;display:none}
@@ -2799,6 +2799,68 @@ function readHomesPage(doc) {
         #vl-groups a[onclick*="NormalLogout"]:hover{background-color:#fff5f5;border-color:#c4252b}
         #vl-livebadge .mt{font-variant-numeric:tabular-nums;font-weight:600;padding-left:6px;margin-left:2px;border-left:1px solid rgba(255,255,255,.45)}
         #vl-livebadge.off .mt{display:none}
+        /* disposition screen */
+        html.vl-dispo-on #DispoSelectBox{opacity:0!important;pointer-events:none!important}
+        html.vl-cbfill #CallBackSelectBox{opacity:0!important;pointer-events:none!important}
+        #vl-dispo{position:fixed;inset:0;z-index:2147483100;overflow:auto;background:var(--bg);color:var(--ink);font:14px "Segoe UI",Arial,sans-serif}
+        #vl-dispo *{box-sizing:border-box}
+        #vl-dispo .band{height:64px;background:var(--band);color:var(--bandInk);display:flex;align-items:center;padding:0 24px;gap:14px;border-bottom:2px solid var(--acc)}
+        #vl-dispo .band b{font-size:18px}#vl-dispo .band .who{opacity:.8}#vl-dispo .band .sp{flex:1}
+        #vl-dispo .band a{color:inherit;font:600 13px "Segoe UI",Arial;text-decoration:none;border:1px solid rgba(128,128,128,.45);border-radius:8px;padding:6px 12px}
+        #vl-dispo .badge{background:#c4252b;color:#fff;border-radius:999px;font:700 11px "Segoe UI",Arial;padding:4px 10px;letter-spacing:.04em}
+        #vl-dispo .timer{font:700 13px Consolas,monospace;border-radius:999px;padding:4px 10px;background:rgba(128,128,128,.15)}
+        #vl-dispo .timer.slow{background:#fde8e8;color:#b42318}
+        #vl-dispo .stats{max-width:1240px;margin:16px auto 0;padding:0 22px;display:flex;gap:10px;align-items:center}
+        #vl-dispo .stats div{flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 14px;display:flex;align-items:baseline;gap:8px}
+        #vl-dispo .stats b{font-size:20px}#vl-dispo .stats span{font-size:12px;color:var(--mut)}#vl-dispo .stats .me{font-size:12px;color:var(--mut)}
+        #vl-dispo .wrap{max-width:1240px;margin:12px auto 30px;padding:0 22px;display:grid;grid-template-columns:1fr 380px;gap:16px;align-items:start}
+        #vl-dispo .c{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+        #vl-dispo h3{margin:0 0 12px;font:700 12px "Segoe UI",Arial;letter-spacing:.06em;color:var(--mut);text-transform:uppercase;display:flex;align-items:center;gap:8px}
+        #vl-dispo h3 .r{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:600}
+        #vl-dispo .grp{margin-bottom:14px}#vl-dispo .grp>div:not(.cb){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+        #vl-dispo .grp small{display:block;font:700 10.5px "Segoe UI",Arial;letter-spacing:.06em;color:var(--mut);margin:0 0 6px}
+        #vl-dispo .st{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);background:var(--tile);border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left;font:inherit;color:var(--ink)}
+        #vl-dispo .st:hover{border-color:var(--c)}
+        #vl-dispo .st i{min-width:34px;height:30px;padding:0 4px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;font:700 10.5px Consolas,monospace;font-style:normal;color:#fff;background:var(--c)}
+        #vl-dispo .st b{display:block;font-size:14px}#vl-dispo .st span{font-size:11.5px;color:var(--mut)}
+        #vl-dispo kbd{font:700 11px Consolas,monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--mut);background:var(--card)}
+        #vl-dispo .st kbd{margin-left:auto}
+        #vl-dispo .st.on{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 22%,transparent);background:var(--card)}
+        #vl-dispo .g{--c:#1aa33c}#vl-dispo .b{--c:#1652e6}#vl-dispo .r{--c:#c4252b}#vl-dispo .n{--c:#6b7686}#vl-dispo .a{--c:#d97706}#vl-dispo .o{--c:#7c3aed}
+        #vl-dispo .cb{display:none;margin-top:8px;border:1.5px solid #1652e6;border-radius:10px;padding:12px;background:color-mix(in srgb,#1652e6 6%,var(--card))}
+        #vl-dispo .cb.show{display:block}#vl-dispo .cb b{font-size:13px}#vl-dispo .cb .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+        #vl-dispo .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 12px;font:600 12.5px "Segoe UI",Arial;cursor:pointer}
+        #vl-dispo .chip.on,#vl-dispo .chip:hover{border-color:var(--acc);color:var(--acc)}
+        #vl-dispo .cb input{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:13px "Segoe UI",Arial;background:var(--card);color:var(--ink)}
+        #vl-dispo .sum{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;font-size:13px}
+        #vl-dispo .sum span{display:block;font-size:11px;color:var(--mut)}#vl-dispo .sum b{font-size:14px}#vl-dispo .sum .full{grid-column:1/-1}
+        #vl-dispo textarea{width:100%;height:110px;border:1px solid var(--line);border-radius:9px;padding:10px;font:14px "Segoe UI",Arial;background:var(--tile);color:var(--ink);resize:vertical}
+        #vl-dispo textarea.need{border-color:#d97706;box-shadow:0 0 0 3px rgba(217,119,6,.18)}
+        #vl-dispo .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+        #vl-dispo .link{font:600 12.5px "Segoe UI",Arial;color:var(--acc);background:none;border:0;cursor:pointer;padding:0}
+        #vl-dispo .hint{font-size:12px;color:#b45309;margin-top:6px;display:none}#vl-dispo .hint.show{display:block}
+        #vl-dispo .sw{display:flex;align-items:center;gap:10px;margin:10px 0;cursor:pointer;user-select:none}
+        #vl-dispo .sw i{width:38px;height:22px;border-radius:999px;background:#c4ccd6;position:relative;flex:none}
+        #vl-dispo .sw i::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}
+        #vl-dispo .sw.on i{background:var(--acc)}#vl-dispo .sw.on i::after{left:19px}#vl-dispo .sw.pz.on i{background:#d97706}
+        #vl-dispo .btn{display:block;width:100%;border:0;border-radius:10px;padding:13px;font:700 15px "Segoe UI",Arial;cursor:pointer;margin-bottom:8px}
+        #vl-dispo .pri{background:var(--acc);color:#fff}#vl-dispo .pri span{opacity:.7;font-weight:600;font-size:12px}#vl-dispo .pri:disabled{opacity:.45;cursor:default}
+        #vl-dispo .two{display:flex;gap:8px}#vl-dispo .two .btn{background:transparent;border:1px solid var(--line);color:var(--ink);font-weight:600;font-size:13px;padding:10px}
+        #vl-dispo .sel{font-size:13px;color:var(--mut);margin-bottom:10px}#vl-dispo .sel b{color:var(--ink)}
+        #vl-dispo .keys{font-size:11.5px;color:var(--mut);text-align:center}
+        #vl-dispo .tl{display:none;background:color-mix(in srgb,#1aa33c 10%,var(--card));border:1px solid color-mix(in srgb,#1aa33c 40%,var(--line));border-radius:10px;padding:8px 12px;margin:8px 0}
+        #vl-dispo .tl.show{display:block}#vl-dispo .tl .sw{margin:4px 0 8px}
+        #vl-dispo .tlrow{display:flex;gap:8px;align-items:center}
+        #vl-dispo .tlsel{flex:1;height:32px;border:1px solid var(--line);border-radius:7px;padding:0 8px;font:13px "Segoe UI",Arial;background:var(--card);color:var(--ink)}
+        #vl-dispo .tlvia{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+        #vl-dispo .tlvia button{border:0;background:var(--card);color:var(--ink);padding:6px 10px;font:600 12px "Segoe UI",Arial;cursor:pointer}
+        #vl-dispo .tlvia button.on{background:var(--acc);color:#fff}
+        #vl-dispo .modal{position:fixed;inset:0;background:rgba(10,15,25,.55);display:none;align-items:center;justify-content:center;z-index:2}
+        #vl-dispo .modal.show{display:flex}
+        #vl-dispo .modal>div{background:var(--card);color:var(--ink);border-radius:14px;padding:22px 24px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+        #vl-dispo .modal h2{margin:0 0 8px;font-size:18px;color:#c4252b}#vl-dispo .modal p{margin:0 0 16px;color:var(--mut)}
+        #vl-dispo .modal .row{display:flex;gap:8px}#vl-dispo .modal button{flex:1;border-radius:9px;padding:11px;font:700 14px "Segoe UI",Arial;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+        #vl-dispo .modal .red{background:#c4252b;border-color:#c4252b;color:#fff}
         /* theme menu */
         #vl-theme{font:600 12px "Segoe UI",Arial,sans-serif}
         #vl-theme .tb{width:32px;height:30px;border-radius:8px;border:1px solid #c4ccd6;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.12);padding:0;color:#1652e6}
@@ -2962,6 +3024,7 @@ function readHomesPage(doc) {
     try { pitchSheet(); } catch (e) {}
     try { scriptPanel(); } catch (e) {}
     fitScreen();
+    try { trackTalk(); dispoScreen(); } catch (e) {}
     topRight();
     logo();
     scrollLock();
@@ -3048,7 +3111,7 @@ function readHomesPage(doc) {
       if (cs.visibility !== 'visible' || cs.display === 'none' || z < 40 || z <= top) return;
       const t = el.querySelector('table'); if (!t) return;
       const w = parseInt(t.getAttribute('width'), 10) || 0, h = parseInt(t.getAttribute('height'), 10) || 0;
-      if (w >= 1500 && h >= 600 && (el.textContent || '').trim()) { full = el; top = z; }
+      if (w >= 1000 && h >= 600 && (el.textContent || '').trim()) { full = el; top = z; }   // 1000+: also the disposition screen (1234 wide), lead search, callbacks…
     });
     document.querySelectorAll('.vl-full').forEach((el) => { if (el !== full) el.classList.remove('vl-full'); });
     if (full) full.classList.add('vl-full');
@@ -3064,7 +3127,7 @@ function readHomesPage(doc) {
       // only Vici's own boxes matter (our pieces restyle themselves all the time)
       if (!recs.some((r) => !/^(vl-|vprop)/.test(r.target.id || '') && !(r.target.closest && r.target.closest('[id^="vl-"],[id^="vprop"]')))) return;
       if (tkQueued) return; tkQueued = true;
-      queueMicrotask(() => { tkQueued = false; try { autoGroups(); takeover(); scriptCover(); xferCard(); } catch (e) {} });
+      queueMicrotask(() => { tkQueued = false; try { autoGroups(); takeover(); scriptCover(); xferCard(); dispoScreen(); } catch (e) {} });
     });
     tkObs.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
   }
@@ -3290,6 +3353,220 @@ function readHomesPage(doc) {
     return w;
   }
 
+  // ---------- Disposition screen (Agency View). Every button drives Vici's own disposition box underneath
+  // (its status links, notes box, "pause agent dialing" box, SUBMIT and callback screen), so dispositions save
+  // exactly as before. Classic Vici keeps Vici's own screen. ----------
+  const DGRP = { SALE: 'g', XFER: 'g', CALLBK: 'b', NI: 'r', DEC: 'r', DNC: 'r', NP: 'a', FX: 'a', SPAN: 'a', A: 'n', N: 'n', B: 'n', DAIR: 'n', DC: 'n', BOT: 'n' };
+  const DSUB = { SALE: 'Moving forward', XFER: 'Sent to a closer', CALLBK: 'Pick a time below', DEC: 'Notes needed', DNC: 'Asks to confirm' };
+  const DNEED = ['SALE', 'CALLBK', 'DEC'];
+  const DCHIPS = ['Wants cash out', 'Rate too high', 'Already refinanced', 'Spouse not home', 'Call after 5pm', 'Shopping other lenders', 'Credit concerns'];
+  let dz = null, dState = null, talkSecs = 0;
+  function trackTalk() {
+    const img = document.querySelector('img[name="livecall"]');
+    if (img && /_ON\./i.test(img.getAttribute('src') || '')) talkSecs = parseInt((byId('SecondSDISP') || {}).textContent, 10) || talkSecs;
+  }
+  const dEsc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const mss = (n) => Math.floor(n / 60) + ':' + String(n % 60).padStart(2, '0');
+  const vis = (e) => !!e && getComputedStyle(e).visibility === 'visible';
+  function dayStats() {
+    const d = new Date(), key = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    let st = GM_getValue('vpDay', null);
+    if (!st || st.day !== key) st = { day: key, calls: 0, sales: 0, cbs: 0, talk: 0, wrap: 0 };
+    return st;
+  }
+  function dispoScreen() {
+    const box = byId('DispoSelectBox'), cbBox = byId('CallBackSelectBox');
+    if (dState && dState.cbPending && vis(cbBox)) { fillCallback(cbBox); return; }
+    if (!vis(box)) {
+      if (dz && !(dState && dState.cbPending)) closeDispo();
+      return;
+    }
+    if (!dz) buildDispo(box);
+  }
+  function closeDispo() {
+    if (dState && dState.submitted) {   // count it in "Your day"
+      const st = dayStats(); st.calls++; if (dState.pick === 'SALE') st.sales++; if (dState.pick === 'CALLBK') st.cbs++;
+      st.talk += dState.talk || 0; st.wrap += dState.wrap || 0; GM_setValue('vpDay', st);
+    }
+    if (dz) dz.remove();
+    dz = null; dState = null;
+    document.documentElement.classList.remove('vl-dispo-on', 'vl-cbfill');
+    if (dTimer) { clearInterval(dTimer); dTimer = null; }
+  }
+  let dTimer = null;
+  function buildDispo(box) {
+    const links = [...box.querySelectorAll('a')].map((a) => { const m = (a.getAttribute('onclick') || '').match(/DispoSelectContent_create\('([^']+)','ADD'/); return m ? { code: m[1], a, name: a.textContent.replace(/^\s*\S+\s*-\s*/, '').trim() } : null; }).filter(Boolean);
+    if (!links.length) return;   // nothing to show yet; Vici fills its list in a moment
+    const hot = {};
+    ['HotKeyBoxA', 'HotKeyBoxB', 'HotKeyBoxC'].map((id) => byId(id) ? byId(id).innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ') : '').join('\n').split('\n')
+      .forEach((l) => { const m = l.trim().match(/^(\d)\s*-\s*(\S+)\s*-/); if (m) hot[m[2]] = m[1]; });
+    const used = new Set(Object.values(hot)); let free = 1;
+    ['XFER', 'CALLBK', 'DEC'].forEach((c) => { if (hot[c] || !links.some((l) => l.code === c)) return; while (free <= 9 && used.has(String(free))) free++; if (free <= 9) { hot[c] = String(free); used.add(String(free)); } });
+    const val = (id) => (byId(id) ? String(byId(id).value || '').trim() : '');
+    const ph = val('phone_number').replace(/\D/g, ''), phone = ph.length === 10 ? `${ph.slice(0, 3)}-${ph.slice(3, 6)}-${ph.slice(6)}` : ph;
+    const name = [val('first_name'), val('last_name')].filter(Boolean).join(' ');
+    const a = getAddress(), c = a.missing.length ? null : cache[a.full], zm = c && siteState(c, 'zillow').model;
+    const est = zm && isNum(zm.estimate) ? zm.estimate : null, loan = parseMoney(byLabel(/^Loan\s*Amount/i));
+    const st = dayStats(), th = propTheme();
+    dState = { t0: Date.now(), pick: null, cb: null, cbOnly: true, talk: talkSecs };
+    const tile = (l) => `<button type="button" class="st ${DGRP[l.code] || 'o'}" data-s="${dEsc(l.code)}"><i>${dEsc(l.code)}</i><div><b>${dEsc(l.name || l.code)}</b>${DSUB[l.code] ? `<span>${DSUB[l.code]}</span>` : ''}</div>${hot[l.code] ? `<kbd>${hot[l.code]}</kbd>` : ''}</button>`;
+    const group = (title, keys) => { const ls = links.filter((l) => keys.includes(DGRP[l.code] || 'o')); return ls.length ? `<div class="grp"><small>${title}</small><div>${ls.map(tile).join('')}</div>${keys.includes('b') && ls.some((l) => l.code === 'CALLBK') ? CBHTML : ''}</div>` : ''; };
+    const CBHTML = `<div class="cb"><b>When should they be called back?</b><div class="row"><span class="chip" data-cb="1h">In 1 hour</span><span class="chip" data-cb="am">Tomorrow morning</span><span class="chip" data-cb="pm">Tomorrow afternoon</span><span class="chip" data-cb="pick">Pick a date</span><input type="datetime-local" class="cbpick" hidden></div>
+      <label class="sw on cbme"><i></i>Only I call them back (my callback)</label></div>`;
+    dz = document.createElement('div');
+    dz.id = 'vl-dispo';
+    Object.entries({ bg: th.bg, card: th.card, ink: th.ink, mut: th.muted, line: th.border, tile: th.tile, acc: th.accent }).forEach(([k, v]) => dz.style.setProperty('--' + k, v));
+    const h = document.documentElement.classList;
+    const band = h.contains('th-navy') ? 'linear-gradient(90deg,#0b2a55,#123d78)' : h.contains('th-dark') ? '#0d1626' : th.card;
+    dz.style.setProperty('--band', band); dz.style.setProperty('--bandInk', h.contains('th-navy') ? '#fff' : th.ink);
+    dz.innerHTML = `<div class="band"><span class="badge">CALL HUNG UP</span><b>Disposition call</b><span class="who">${dEsc(phone)}${name ? ' · ' + dEsc(name) : ''}</span>
+        <span class="timer">Wrap-up 0:00</span><span class="sp"></span><a href="#" data-v="DispoHanguPAgaiN">Hang up again</a><a href="#" data-v="DispoMinimize">Minimize</a></div>
+      <div class="stats"><span class="me">Your day</span><div><b>${st.calls}</b><span>calls</span></div><div><b>${st.sales}</b><span>sales</span></div><div><b>${st.cbs}</b><span>callbacks set</span></div>
+        <div><b>${Math.floor(st.talk / 3600)}h ${Math.floor(st.talk % 3600 / 60)}m</b><span>talk time</span></div><div><b>${st.calls ? mss(Math.round(st.wrap / st.calls)) : '–'}</b><span>avg wrap-up</span></div></div>
+      <div class="wrap"><div class="c"><h3>How did the call go? <span class="r">Press the number, then Enter</span></h3>
+          ${group('GOOD', ['g', 'b'])}${group('NOT INTERESTED', ['r', 'a'])}${group('NO CONVERSATION', ['n'])}${group('OTHER', ['o'])}</div>
+        <div><div class="c"><h3>This call <span class="r">${talkSecs ? mss(talkSecs) + ' talk time' : ''}</span></h3><div class="sum">
+            <div class="full"><span>Borrower</span><b>${dEsc(name || '—')}</b>${phone ? ' · ' + dEsc(phone) : ''}</div>
+            <div class="full"><span>Property</span><b>${dEsc(a.missing.length ? '—' : a.street + ', ' + a.city + ', ' + a.state)}</b></div>
+            <div><span>Loan amount</span><b>${loan ? money(loan) : '—'}</b></div><div><span>Estimated value</span><b>${est ? money(est) : '—'}</b></div>
+            <div><span>LTV</span><b>${loan && est ? (loan / est * 100).toFixed(1) + '%' : '—'}</b></div><div><span>Equity est.</span><b>${loan && est ? (est - loan < 0 ? '−' : '') + kMoney(Math.abs(est - loan)) : '—'}</b></div></div></div>
+          <div class="c"><h3>Call notes <span class="r"><button type="button" class="link" data-a="copy">Copy from pitch sheet</button></span></h3>
+            <textarea class="notes" placeholder="Anything to remember about this call…"></textarea>
+            <div class="chips">${DCHIPS.map((t) => `<span class="chip qc">${t}</span>`).join('')}</div>
+            <div class="hint">Add a note for this one before submitting.</div>
+            <div class="tl"><label class="sw on tlsw"><i></i>Send the pitch sheet to</label><div class="tlrow">${leadPicker()}</div></div>
+            <label class="sw pz"><i></i>Pause after this call</label>
+            <div class="sel">Pick how the call went.</div>
+            <button type="button" class="btn pri" data-a="go" disabled>Submit <span>(Enter)</span></button>
+            <div class="two"><button type="button" class="btn" data-a="clear">Clear</button><button type="button" class="btn" data-a="web">Web form</button></div>
+            <div class="keys">Keyboard: <kbd>1</kbd>–<kbd>9</kbd> pick · <kbd>Enter</kbd> submit · <kbd>Esc</kbd> clear</div></div></div></div>
+      <div class="modal"><div><h2>Remove this number for good?</h2><p>Do Not Call stops <b>${dEsc(phone)}</b> from being dialed again. This can't be undone from the agent screen.</p>
+        <div class="row"><button type="button" data-a="dncno">Go back</button><button type="button" class="red" data-a="dncyes">Yes, Do Not Call</button></div></div></div>`;
+    document.documentElement.appendChild(dz);
+    document.documentElement.classList.add('vl-dispo-on');
+    const q = (sel) => dz.querySelector(sel), qa = (sel) => [...dz.querySelectorAll(sel)];
+    const vNotes = byId('call_notes_dispo'), notes = q('.notes');
+    notes.value = vNotes ? vNotes.value : '';
+    const vLink = (re) => [...box.querySelectorAll('a')].find((x) => re.test(x.getAttribute('onclick') || ''));
+    const check = () => {
+      if (!dState) return;
+      const p = dState.pick, needNote = DNEED.includes(p) && !notes.value.trim(), needCb = p === 'CALLBK' && !dState.cb;
+      notes.classList.toggle('need', needNote); q('.hint').classList.toggle('show', needNote);
+      const nm = p ? (links.find((l) => l.code === p) || {}).name || p : '';
+      q('.sel').innerHTML = !p ? 'Pick how the call went.' : needCb ? `Selected: <b>${dEsc(nm)}</b> – pick a callback time.` : `Selected: <b>${dEsc(nm)}</b>${p === 'CALLBK' && dState.cb ? ' · ' + dEsc(dState.cb.label) : ''}`;
+      q('[data-a="go"]').disabled = !p || needNote || needCb;
+    };
+    const choose = (code) => {
+      const l = links.find((x) => x.code === code); if (!l) return;
+      l.a.click();   // Vici's own status link
+      dState.pick = code;
+      qa('.st').forEach((b) => b.classList.toggle('on', b.dataset.s === code));
+      const cb = q('.cb'); if (cb) cb.classList.toggle('show', code === 'CALLBK');
+      q('.tl').classList.toggle('show', code === 'SALE');
+      check();
+    };
+    const syncNotes = () => { if (vNotes) vNotes.value = notes.value; check(); };
+    const submit = () => {
+      if (!dState || q('[data-a="go"]').disabled) return;
+      if (dState.pick === 'DNC' && !q('.modal').classList.contains('show')) { q('.modal').classList.add('show'); return; }
+      q('.modal').classList.remove('show');
+      const sel = byId('DispoSelection');
+      if (sel && sel.value !== dState.pick) choose(dState.pick);
+      if (vNotes) vNotes.value = notes.value;
+      dState.notes = notes.value;
+      dState.wrap = Math.round((Date.now() - dState.t0) / 1000);
+      dState.submitted = true;
+      if (dState.pick === 'CALLBK') { dState.cbPending = true; document.documentElement.classList.add('vl-cbfill'); }
+      if (dState.pick === 'SALE' && q('.tlsw').classList.contains('on')) {   // summary taken now, before the next lead clears the pitch sheet
+        const via = (q('.tlvia .on') || {}).dataset ? q('.tlvia .on').dataset.via : 'teams';
+        sendVia(via || 'teams', q('.tlsel').value, pitchSummary() + (notes.value.trim() ? '\nCall notes: ' + notes.value.trim() : ''));
+      }
+      const go = vLink(/DispoSelect_submit\(/); if (go) go.click();
+    };
+    const clear = () => {
+      const r = vLink(/'ReSET'/); if (r) r.click();
+      dState.pick = null; dState.cb = null; notes.value = vNotes ? vNotes.value : '';
+      qa('.st,.chip').forEach((x) => x.classList.remove('on')); const cb = q('.cb'); if (cb) cb.classList.remove('show');
+      check();
+    };
+    dz.addEventListener('click', (e) => {
+      const t = e.target;
+      const b = t.closest('.st'); if (b) { choose(b.dataset.s); return; }
+      const v = t.closest('[data-v]'); if (v) { e.preventDefault(); const x = vLink(new RegExp(v.dataset.v)); if (x) x.click(); return; }
+      const vb = t.closest('[data-via]'); if (vb) { qa('[data-via]').forEach((x) => x.classList.toggle('on', x === vb)); return; }
+      const qc = t.closest('.qc'); if (qc) { notes.value = (notes.value.trim() ? notes.value.trim() + '. ' : '') + qc.textContent; qc.classList.add('on'); syncNotes(); return; }
+      const cbc = t.closest('[data-cb]');
+      if (cbc) {
+        qa('[data-cb]').forEach((x) => x.classList.toggle('on', x === cbc));
+        const pick = q('.cbpick'), now = new Date(), d = new Date(now);
+        if (cbc.dataset.cb === 'pick') { pick.hidden = false; dState.cb = null; check(); return; }
+        pick.hidden = true;
+        if (cbc.dataset.cb === '1h') { d.setMinutes(Math.ceil((now.getMinutes() + 60) / 5) * 5, 0, 0); }
+        else { d.setDate(now.getDate() + 1); d.setHours(cbc.dataset.cb === 'am' ? 10 : 14, 0, 0, 0); }
+        dState.cb = { d, label: cbc.textContent + ' · ' + d.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) };
+        check(); return;
+      }
+      const sw = t.closest('.sw');
+      if (sw) { e.preventDefault(); sw.classList.toggle('on');
+        if (sw.classList.contains('pz') && byId('DispoSelectStop')) byId('DispoSelectStop').checked = sw.classList.contains('on');
+        if (sw.classList.contains('cbme')) dState.cbOnly = sw.classList.contains('on'); return; }
+      const act = t.closest('[data-a]'); if (!act) return;
+      const k = act.dataset.a;
+      if (k === 'go' || k === 'dncyes') submit();
+      else if (k === 'dncno') q('.modal').classList.remove('show');
+      else if (k === 'clear') clear();
+      else if (k === 'web') { const w = vLink(/WeBForMDispoSelect_submit/); if (w) w.click(); }
+      else if (k === 'copy') {
+        const ps = byId('vl-pitch'), f = (key) => ps ? String((ps.querySelector(`[data-k="${key}"]`) || {}).value || '').trim() : '';
+        const prog = ps ? [...ps.querySelectorAll('[data-g="pitch"] .on')].map((x) => x.textContent).join('/') : '';
+        const parts = [f('goals') && 'Goal: ' + f('goals'), f('notes') && 'Notes: ' + f('notes'), (prog || f('pitch')) && 'Pitch: ' + [prog, f('pitch')].filter(Boolean).join(' – ')].filter(Boolean);
+        if (parts.length) { notes.value = (notes.value.trim() ? notes.value.trim() + '\n' : '') + parts.join('\n'); syncNotes(); }
+      }
+    });
+    const pickIn = q('.cbpick');
+    if (pickIn) pickIn.addEventListener('change', () => { const d = new Date(pickIn.value); dState.cb = isNaN(d) ? null : { d, label: d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }; check(); });
+    notes.addEventListener('input', syncNotes);
+    const pz = byId('DispoSelectStop'); if (pz && pz.checked) q('.sw.pz').classList.add('on');
+    dz.addEventListener('keydown', (e) => { if (e.target === notes && e.key === 'Escape') notes.blur(); });
+    dState.keys = (e) => {
+      if (!dz || e.target === notes || (e.target.tagName === 'INPUT')) return;
+      const code = Object.keys(hot).find((c) => hot[c] === e.key && links.some((l) => l.code === c));
+      if (code) { e.preventDefault(); e.stopImmediatePropagation(); choose(code); }
+      else if (e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); submit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); clear(); }
+    };
+    window.addEventListener('keydown', dState.keys, true);
+    const stopKeys = dState.keys;
+    const tmr = q('.timer');
+    dTimer = setInterval(() => {
+      if (!dz) { window.removeEventListener('keydown', stopKeys, true); return; }
+      const sec = Math.round((Date.now() - (dState ? dState.t0 : Date.now())) / 1000);
+      tmr.textContent = 'Wrap-up ' + mss(sec); tmr.classList.toggle('slow', sec >= 60);
+    }, 500);
+    const prev = byId('DispoSelection') && byId('DispoSelection').value; if (prev) choose(prev);
+    check();
+  }
+  // Vici's callback screen opens after SUBMIT with Call back: fill it from the time picked here, then save it
+  function fillCallback(cbBox) {
+    const st = dState; st.cbPending = false;
+    try {
+      const d = st.cb.d, ymd = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const dl = [...cbBox.querySelectorAll('a')].find((x) => (x.getAttribute('onclick') || '').includes(`CB_date_pick('${ymd}')`));
+      if (dl) dl.click(); else byId('CallBackDatESelectioN').value = ymd;
+      let hh = d.getHours(), mm = Math.round(d.getMinutes() / 5) * 5; if (mm === 60) { mm = 55; }
+      const ap = hh >= 12 ? 'PM' : 'AM'; hh = hh % 12 || 12;
+      const set = (id, v) => { const e = byId(id); if (!e) throw new Error(id); e.value = v; if (e.value !== v) throw new Error(id + '=' + v); };
+      set('CBT_hour', String(hh).padStart(2, '0')); set('CBT_minute', String(mm).padStart(2, '0')); set('CBT_ampm', ap);
+      const only = byId('CallBackOnlyMe'); if (only) only.checked = st.cbOnly !== false;
+      const cm = byId('CallBackCommenTsField'); if (cm) cm.value = String(st.notes || '').replace(/\s+/g, ' ').slice(0, 250);
+      const go = [...cbBox.querySelectorAll('a')].find((x) => /CallBackDatE_submit/.test(x.getAttribute('onclick') || ''));
+      if (!go) throw new Error('submit');
+      go.click();
+    } catch (e) { /* show Vici's own callback screen so the agent can finish it */ }
+    document.documentElement.classList.remove('vl-cbfill');
+    setTimeout(() => { if (dz && !vis(byId('DispoSelectBox'))) closeDispo(); }, 300);
+  }
+
   // ---------- Fit to the window: the layout is drawn for 1920 x 880 and scaled to whatever the window is,
   // so zooming in/out (Ctrl + / Ctrl -) or a different screen size always shows the whole screen ----------
   const Z = () => parseFloat(document.body.style.zoom) || 1;
@@ -3421,7 +3698,7 @@ function readHomesPage(doc) {
     const job = (p) => SUB('EMPLOYMENT &amp; INCOME') + G(3, F(p + 'emp', 'Employer') + F(p + 'title1', 'Position / title') + F(p + 'yrs', 'Years') +
         F(p + 'income', 'Income') + C(p + 'inc', 'Paid on', ['W-2', '1099'], '', true) + F(p + 'prev', 'Previous employer')) +
       SUB('OTHER INCOME') + G(4, F(p + 'ssi', 'SSI') + F(p + 'pension', 'Pension') + F(p + 'dis', 'Disability') + F(p + 'ira', 'IRA') + F(p + 'addl', 'Additional income', 's4'));
-    return `<div class="bar"><b>Pitch sheet<span data-k="title"></span></b><button type="button" data-a="pdf">Save as PDF</button><button type="button" class="go" data-a="send" title="Coming next: tell Claude how sheets get to the team lead">Send to Team Lead</button></div>
+    return `<div class="bar"><b>Pitch sheet<span data-k="title"></span></b><button type="button" data-a="pdf">Save as PDF</button><button type="button" class="go" data-a="send" title="Send this pitch sheet to a team lead in Teams or Outlook">Send to Team Lead</button></div>
       <div class="page">
       ${SEC(1, 'GOALS &amp; NOTES', `<div class="g">${T('goals', 'What does the borrower want?')}${T('notes', 'Notes')}</div>`)}
       ${SEC(2, 'BORROWER', G(3, F('borrower', 'Full name', 's2') + F('dob', 'Date of birth') + F('credit', 'Credit score') +
@@ -3454,7 +3731,7 @@ function readHomesPage(doc) {
     #vl-pitch .bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fff;border-bottom:1px solid #dde2e8}
     #vl-pitch .bar b{font-size:14px;flex:1}#vl-pitch .bar b span{font-weight:400;color:#5b6675}
     #vl-pitch .bar button{font:600 12px "Segoe UI",Arial;border:1px solid #c4ccd6;background:#fff;color:#1d2530;border-radius:6px;padding:6px 11px;cursor:pointer}
-    #vl-pitch .bar button.go{background:#2563eb;border-color:#2563eb;color:#fff;opacity:.6}
+    #vl-pitch .bar button.go{background:#2563eb;border-color:#2563eb;color:#fff}
     #vl-pitch .page{flex:1;overflow:auto;overscroll-behavior:contain;padding:10px 12px 20px;display:flex;flex-direction:column;gap:10px}
     #vl-pitch .sec{background:#fff;border:1px solid #dde2e8;border-radius:9px;padding:9px 12px 11px}
     #vl-pitch .sec.pitchsec{border-color:#2563eb}#vl-pitch .sec.pitchsec .n{background:#2563eb}
@@ -3478,7 +3755,13 @@ function readHomesPage(doc) {
     #vl-pitch .hint{font-size:10.5px;color:#2563eb;margin-top:1px}
     #vl-pitch .sub{font:700 10.5px "Segoe UI",Arial;color:#4a5563;letter-spacing:.05em;margin:9px 0 5px;border-top:1px dashed #dde2e8;padding-top:7px}
     #vl-pitch .cob-off{color:#5b6675}
-    #vl-pitch .lock{font-weight:400;color:#5b6675}`;
+    #vl-pitch .lock{font-weight:400;color:#5b6675}
+    #vl-tlbox{position:absolute;right:10px;top:46px;z-index:5;width:340px;background:#fff;color:#1d2530;border:1px solid #d6dce4;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font:13px "Segoe UI",Arial}
+    #vl-tlbox b{grid-column:1/-1}#vl-tlbox select{grid-column:1/-1;height:32px;border:1px solid #cdd4dd;border-radius:7px;padding:0 8px;font:13px "Segoe UI",Arial}
+    #vl-tlbox .go,#vl-tlbox .go2{border:0;border-radius:8px;padding:9px;font:600 13px "Segoe UI",Arial;cursor:pointer;color:#fff}
+    #vl-tlbox .go{background:#5059c9}#vl-tlbox .go2{background:#0f6cbd}
+    #vl-tlbox .x{position:absolute;right:8px;top:6px;border:0;background:none;cursor:pointer;color:#6b7686}
+    #vl-tlbox .note{grid-column:1/-1;font-size:11.5px;color:#6b7686}`;
 
   let psLead = null;
   const typeToPill = (t) => { t = String(t || '').toLowerCase();
@@ -3500,7 +3783,7 @@ function readHomesPage(doc) {
         if (a) { e.preventDefault();
           if (a.dataset.a === 'pdf') pitchPDF();
           else if (a.dataset.a === 'cob') { const cb = ps.querySelector('.cob'), open = cb.hidden; cb.hidden = !open; ps.querySelector('.cob-off').hidden = open; a.textContent = open ? '− Remove co-borrower' : '+ Add co-borrower'; }
-          else a.title = 'Coming next: tell Claude how sheets get to the team lead';
+          else if (a.dataset.a === 'send') sendToLead();
           return; }
         const b = e.target.closest('.t,.p'); if (!b) return;
         e.preventDefault();
@@ -3557,6 +3840,59 @@ function readHomesPage(doc) {
       if (note && z && isNum(z.estimate)) note.textContent = 'Zillow est. ' + money(z.estimate);
     }
   }
+  // ---------- Send to Team Lead: a Teams chat or an Outlook email to the team lead, with the pitch sheet's summary
+  // typed in (the agent presses send). Only names and work emails are kept here; nothing is sent by the script itself.
+  const TEAM_LEADS = [
+    ['Aaron Leffel', 'Aaronl@mortgageusa.com'], ['Andre Bajawa', 'AndreB@mortgageusa.com'], ['Andrew Abbo', 'AndrewA@mortgageusa.com'],
+    ['Beatrice Bashi', 'BeatriceB@mortgageusa.com'], ['Jon Bachman', 'JonB@mortgageusa.com']];
+  function pitchSummary() {
+    const ps = byId('vl-pitch'), f = (k) => ps ? String((ps.querySelector(`[data-k="${k}"]`) || {}).value || '').trim() : '';
+    const pills = (g) => ps ? [...ps.querySelectorAll(`[data-g="${g}"] .on`)].map((x) => x.textContent).join('/') : '';
+    const v = (id) => (byId(id) ? String(byId(id).value || '').trim() : '');
+    const a = getAddress(), c = a.missing.length ? null : cache[a.full], zm = c && siteState(c, 'zillow').model;
+    const est = zm && isNum(zm.estimate) ? zm.estimate : null, loan = parseMoney(byLabel(/^Loan\s*Amount/i));
+    const agent = ((byId('Header') || {}).textContent || '').match(/Logged in as User\W+([\w.-]+)/i);
+    const L2 = (k, x) => x ? `${k}: ${x}` : '';
+    return [
+      'PITCH SHEET' + (agent ? ' from agent ' + agent[1] : ''),
+      L2('Borrower', f('borrower') || [v('first_name'), v('last_name')].filter(Boolean).join(' ')),
+      L2('Phone', f('phone') || v('phone_number')), L2('Cell', f('cell')), L2('Email', f('email')),
+      L2('Property', a.missing.length ? '' : a.full), L2('Occupancy', pills('occ')), L2('Property type', pills('ptype')),
+      L2('Credit', f('credit')), L2('Loan amount', loan ? money(loan) : ''), L2('Client value', f('value')),
+      L2('Estimated value', est ? money(est) + ' (Zillow)' : ''), L2('LTV', loan && est ? (loan / est * 100).toFixed(1) + '%' : ''),
+      L2('Current mortgage', [f('holder'), f('balance') && 'bal ' + f('balance'), f('rate') && f('rate') + '%', f('payment') && 'pmt ' + f('payment')].filter(Boolean).join(', ')),
+      L2('Goals', f('goals')), L2('Notes', f('notes')), L2('Other offer', f('offer')),
+      L2('Pitch', [pills('pitch'), f('pitch')].filter(Boolean).join(' – '))
+    ].filter(Boolean).join('\n');   // never includes the SSN
+  }
+  function sendVia(how, email, text) {
+    const subj = 'Pitch sheet – ' + (text.match(/Borrower: (.+)/) || [, 'new lead'])[1];
+    const url = how === 'teams'
+      ? 'https://teams.microsoft.com/l/chat/0/0?users=' + encodeURIComponent(email) + '&message=' + encodeURIComponent(text)
+      : 'mailto:' + encodeURIComponent(email) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(text);
+    const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+    GM_setValue('vpTL', email); GM_setValue('vpTLvia', how);
+  }
+  function leadPicker() {   // the team-lead choice + Teams / Outlook, used by the pitch sheet and the disposition screen
+    const last = GM_getValue('vpTL', ''), via = GM_getValue('vpTLvia', 'teams');
+    return `<select class="tlsel">${TEAM_LEADS.map(([n, e]) => `<option value="${e}"${e === last ? ' selected' : ''}>${n}</option>`).join('')}</select>
+      <span class="tlvia"><button type="button" data-via="teams" class="${via === 'teams' ? 'on' : ''}">Teams</button><button type="button" data-via="outlook" class="${via === 'outlook' ? 'on' : ''}">Outlook</button></span>`;
+  }
+  function sendToLead() {
+    let m = byId('vl-tlbox');
+    if (m) { m.remove(); return; }
+    m = document.createElement('div'); m.id = 'vl-tlbox';
+    m.innerHTML = `<b>Send this pitch sheet to</b>${leadPicker()}<button type="button" class="go" data-go="teams">Send in Teams</button><button type="button" class="go2" data-go="outlook">Send in Outlook</button><button type="button" class="x" data-x="1">✕</button>
+      <div class="note">Opens a ${'Teams chat / Outlook email'} with the summary typed in; you press send. Add the PDF from Save as PDF if you want it attached.</div>`;
+    byId('vl-pitch').appendChild(m);
+    m.querySelector('.tlvia').remove();
+    m.addEventListener('click', (e) => {
+      if (e.target.closest('[data-x]')) { m.remove(); return; }
+      const g = e.target.closest('[data-go]'); if (!g) return;
+      sendVia(g.dataset.go, m.querySelector('.tlsel').value, pitchSummary()); m.remove();
+    });
+  }
+
   // one-page printable copy; Edge's print window has "Save as PDF"
   function pitchPDF() {
     const ps = byId('vl-pitch'); if (!ps) return;
