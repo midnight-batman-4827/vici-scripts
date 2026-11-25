@@ -34,7 +34,8 @@ manifest = {
     'permissions': ['storage', 'declarativeNetRequestWithHostAccess'],
     'host_permissions': [
         'https://www.zillowstatic.com/*', 'https://parser-external.geo.moveaws.com/*',
-        'https://www.zillow.com/*', 'https://www.trulia.com/*', 'https://www.realtor.com/*'],
+        'https://www.zillow.com/*', 'https://www.trulia.com/*', 'https://www.realtor.com/*',
+        'https://*.powerplatform.com/*', 'https://*.logic.azure.com/*'],
     'content_scripts': [{
         'matches': ['https://mtgusa.talkitpro.com/agc/*', 'http://mtgusa.talkitpro.com/agc/*', 'https://mtgusa.talkitpro.com/vicidial/admin_listloader*', 'http://mtgusa.talkitpro.com/vicidial/admin_listloader*', 'https://mtgusa.talkitpro.com/vicidial/admin.php*', 'http://mtgusa.talkitpro.com/vicidial/admin.php*', 'https://www.homes.com/*'],
         'js': ['content.js'], 'run_at': 'document_start'}],

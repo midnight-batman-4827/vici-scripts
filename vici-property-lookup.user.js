@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      16.4
+// @version      16.6
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -18,6 +18,8 @@
 // @connect      www.zillow.com
 // @connect      www.trulia.com
 // @connect      www.realtor.com
+// @connect      powerplatform.com
+// @connect      logic.azure.com
 // @run-at       document-start
 // @homepageURL  https://github.com/midnight-batman-4827/vici-scripts
 // @updateURL    https://raw.githubusercontent.com/midnight-batman-4827/vici-scripts/main/vici-property-lookup.user.js
@@ -2874,6 +2876,9 @@ function readHomesPage(doc) {
         #vl-theme .menu i{width:22px;height:16px;border-radius:4px;border:1px solid #c4ccd6;flex:none}
         #vl-theme .menu div.on::after{content:"\\2713";margin-left:auto;color:#1652e6;font-weight:700}
         #vl-theme .vn{margin:4px 8px;font:11px "Segoe UI",Arial;color:#6b7686}#vl-theme .vn:empty{display:none}
+        #vl-theme .flow{margin:2px 8px 6px;font:12px "Segoe UI",Arial;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+        #vl-theme .flow input{flex:1;min-width:0;height:26px;border:1px solid #cdd4dd;border-radius:6px;padding:0 6px;font:12px "Segoe UI",Arial}
+        #vl-theme .flow a{color:#1652e6;font-weight:600;text-decoration:none}#vl-theme .flow .ok{color:#137a32;font-weight:700}
         #NothingBox2,#inert_button{opacity:0!important}
         /* every theme except Vici grey: header band, light page, Vici's grey boxes see-through */
         #vl-band{display:none}
@@ -3333,6 +3338,7 @@ function readHomesPage(doc) {
       <div class="menu"><b>THEME</b>${THEMES_UI.map(([k, l, c]) => `<div data-th="${k}"><i style="background:${c}"></i>${l}</div>`).join('')}
         <b class="sep">SCREEN</b><div data-vw="agency" class="${view === 'agency' ? 'on' : ''}"><i style="background:linear-gradient(135deg,#1652e6 50%,#fff 50%)"></i>Agency View</div>
         <div data-vw="classic" class="${view === 'classic' ? 'on' : ''}"><i style="background:#cccccc"></i>Classic Vici</div><p class="vn"></p>
+        <b class="sep">SEND TO TEAM LEAD</b><p class="flow"></p>
         <b class="sep">OPENING ANIMATION</b><div data-intro="1" class="${GM_getValue('vpIntro', true) ? 'on' : ''}"><i style="background:repeating-linear-gradient(90deg,#151515 0 4px,#f4f1ea 4px 6px)"></i>Play when I log in</div></div>`;
     w.querySelector('.tb').addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); w.classList.toggle('open'); });
     w.querySelector('.menu').addEventListener('click', (e) => {
@@ -3349,6 +3355,20 @@ function readHomesPage(doc) {
       }
     });
     document.addEventListener('click', (e) => { if (!e.target.closest('#vl-theme')) w.classList.remove('open'); });
+    const flowBox = w.querySelector('.flow');
+    const drawFlow = (edit) => {
+      flowBox.innerHTML = flowUrl() && !edit ? '<span class="ok">Connected ✓</span> <a href="#" data-fl="edit">change</a>'
+        : '<input type="password" placeholder="Paste the flow URL (admin, once per PC)" autocomplete="off"><a href="#" data-fl="save">Save</a>' + (GM_getValue('vpFlowUrl', '') ? ' · <a href="#" data-fl="clear">remove</a>' : '');
+    };
+    flowBox.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-fl]'); if (!a) return; e.preventDefault(); e.stopPropagation();
+      if (a.dataset.fl === 'edit') return drawFlow(true);
+      if (a.dataset.fl === 'clear') { GM_setValue('vpFlowUrl', ''); return drawFlow(true); }
+      const v = flowBox.querySelector('input').value.trim();
+      if (!/^https:\/\/[^/]+\.(powerplatform\.com|logic\.azure\.com)(:\d+)?\//i.test(v)) { flowBox.querySelector('input').style.borderColor = '#c4252b'; return; }
+      GM_setValue('vpFlowUrl', v); drawFlow(false);
+    });
+    drawFlow(false);
     applyTheme(GM_getValue('vpTheme', 'clean'));
     return w;
   }
@@ -3478,8 +3498,8 @@ function readHomesPage(doc) {
       dState.submitted = true;
       if (dState.pick === 'CALLBK') { dState.cbPending = true; document.documentElement.classList.add('vl-cbfill'); }
       if (dState.pick === 'SALE' && q('.tlsw').classList.contains('on')) {   // summary taken now, before the next lead clears the pitch sheet
-        const via = (q('.tlvia .on') || {}).dataset ? q('.tlvia .on').dataset.via : 'teams';
-        sendVia(via || 'teams', q('.tlsel').value, pitchSummary() + (notes.value.trim() ? '\nCall notes: ' + notes.value.trim() : ''));
+        const via = flowUrl() ? '' : (q('.tlvia .on') ? q('.tlvia .on').dataset.via : 'teams');
+        sendLead(q('.tlsel').value, pitchSummary() + (notes.value.trim() ? '\nCall notes: ' + notes.value.trim() : ''), via);
       }
       const go = vLink(/DispoSelect_submit\(/); if (go) go.click();
     };
@@ -3759,7 +3779,7 @@ function readHomesPage(doc) {
     #vl-tlbox{position:absolute;right:10px;top:46px;z-index:5;width:340px;background:#fff;color:#1d2530;border:1px solid #d6dce4;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font:13px "Segoe UI",Arial}
     #vl-tlbox b{grid-column:1/-1}#vl-tlbox select{grid-column:1/-1;height:32px;border:1px solid #cdd4dd;border-radius:7px;padding:0 8px;font:13px "Segoe UI",Arial}
     #vl-tlbox .go,#vl-tlbox .go2{border:0;border-radius:8px;padding:9px;font:600 13px "Segoe UI",Arial;cursor:pointer;color:#fff}
-    #vl-tlbox .go{background:#5059c9}#vl-tlbox .go2{background:#0f6cbd}
+    #vl-tlbox .go{background:#5059c9}#vl-tlbox .go2{background:#0f6cbd}#vl-tlbox .go.full{grid-column:1/-1}#vl-tlbox .note a{color:#1652e6}
     #vl-tlbox .x{position:absolute;right:8px;top:6px;border:0;background:none;cursor:pointer;color:#6b7686}
     #vl-tlbox .note{grid-column:1/-1;font-size:11.5px;color:#6b7686}`;
 
@@ -3865,16 +3885,85 @@ function readHomesPage(doc) {
       L2('Pitch', [pills('pitch'), f('pitch')].filter(Boolean).join(' – '))
     ].filter(Boolean).join('\n');   // never includes the SSN
   }
+  // A small text PDF of the pitch sheet, made right here (no print window, nothing leaves the PC until it's sent)
+  function pitchPdf(text, leadName) {
+    const asc = (x) => String(x).replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[·•]/g, '-').replace(/…/g, '...').replace(/[^\x20-\x7e]/g, '?');
+    const esc = (x) => asc(x).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+    const wrap = (x, n) => { const out = []; let line = ''; String(x).split(' ').forEach((w) => { if ((line + ' ' + w).trim().length > n) { if (line) out.push(line); line = w; } else line = (line + ' ' + w).trim(); }); if (line) out.push(line); return out.length ? out : ['']; };
+    const rows = [];   // [font, size, text, gapBefore]
+    const lines = text.split('\n');
+    rows.push(['F2', 18, 'Pitch sheet', 0]);
+    rows.push(['F1', 10, 'MortgageUSA  |  ' + new Date().toLocaleString('en-US') + (leadName ? '  |  for ' + leadName : ''), 6]);
+    lines.slice(1).forEach((l) => {
+      const m = l.match(/^([^:]{1,30}):\s*(.*)$/);
+      if (!m) { wrap(l, 92).forEach((w, i) => rows.push(['F1', 11, w, i ? 0 : 6])); return; }
+      rows.push(['F2', 10, m[1].toUpperCase(), 12]);
+      m[2].split(/\s*\|\s*|\n/).forEach((part) => wrap(part, 88).forEach((w) => rows.push(['F1', 12, w, 2])));
+    });
+    const pages = []; let cur = [], y = 742;
+    rows.forEach((r) => { const h = r[1] + 4 + r[3]; if (y - h < 54) { pages.push(cur); cur = []; y = 742; } y -= h; cur.push(`BT /${r[0]} ${r[1]} Tf 54 ${y} Td (${esc(r[2])}) Tj ET`); });
+    pages.push(cur);
+    const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
+    const kids = [];
+    pages.forEach((pg) => {
+      const stream = '0.09 0.32 0.9 rg 0 777 612 15 re f 0 0 0 rg\n' + pg.join('\n');
+      objs.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+      objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${objs.length} 0 R >>`);
+      kids.push(objs.length + ' 0 R');
+    });
+    objs[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.length} >>`;
+    let out = '%PDF-1.4\n'; const offs = [];
+    objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const xref = out.length;
+    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+    out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    return btoa(out);
+  }
+  function toast(msg, bad) {
+    const t = document.createElement('div');
+    t.style.cssText = `position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483600;background:${bad ? '#b42318' : '#137a32'};color:#fff;border-radius:999px;padding:10px 18px;font:600 13.5px "Segoe UI",Arial,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25)`;
+    t.textContent = msg; document.documentElement.appendChild(t); setTimeout(() => t.remove(), 6000);
+  }
+  const flowUrl = () => { const u = GM_getValue('vpFlowUrl', ''); return /^https:\/\/[^/]+\.(powerplatform\.com|logic\.azure\.com)(:\d+)?\//i.test(u) ? u : ''; };
+  // Send to Team Lead: with the Power Automate flow connected, the PDF + summary go straight to the team lead in Teams
+  // (filed in SharePoint). Without it (or if it fails): the PDF downloads and a Teams chat / Outlook email opens.
+  function sendLead(email, text, how) {
+    const lead = TEAM_LEADS.find((t) => t[1].toLowerCase() === String(email).toLowerCase()) || ['', email];
+    const borrower = (text.match(/Borrower: (.+)/) || [, 'Lead'])[1];
+    const fileName = ('Pitch sheet - ' + borrower + ' - ' + new Date().toISOString().slice(0, 16).replace('T', ' ').replace(':', 'h')).replace(/[\\/:*?"<>|]/g, '') + '.pdf';
+    const pdf = pitchPdf(text, lead[0]);
+    GM_setValue('vpTL', lead[1]);
+    const fallback = (why) => {
+      const a = document.createElement('a'); a.href = 'data:application/pdf;base64,' + pdf; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
+      sendVia(how || GM_getValue('vpTLvia', 'teams'), lead[1], text);
+      if (why) toast(why + ' The PDF downloaded and ' + ((how || GM_getValue('vpTLvia', 'teams')) === 'outlook' ? 'an Outlook email' : 'a Teams chat') + ' opened instead.', true);
+    };
+    const url = flowUrl();
+    if (!url || how) return fallback('');
+    const agent = (((byId('Header') || {}).textContent || '').match(/Logged in as User\W+([\w.-]+)/i) || [, ''])[1];
+    const html = text.split('\n').map((l) => { const m = l.match(/^([^:]{1,30}):\s*(.*)$/); const e = (x) => String(x).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); return m ? `<b>${e(m[1])}:</b> ${e(m[2])}` : `<b>${e(l)}</b>`; }).join('<br>');
+    GM_xmlhttpRequest({
+      method: 'POST', url, timeout: 30000, headers: { 'Content-Type': 'application/json' },
+      data: JSON.stringify({ teamLead: lead[1], teamLeadName: lead[0], agent, borrower, fileName, summaryHtml: html, summaryText: text, pdf }),
+      onload: (r) => { if (r.status >= 200 && r.status < 300) toast('Pitch sheet sent to ' + (lead[0] || lead[1]) + ' in Teams ✓'); else fallback("Couldn't reach the Team Lead flow (" + r.status + ')'); },
+      onerror: () => fallback("Couldn't reach the Team Lead flow."), ontimeout: () => fallback('The Team Lead flow took too long.')
+    });
+  }
   function sendVia(how, email, text) {
     const subj = 'Pitch sheet – ' + (text.match(/Borrower: (.+)/) || [, 'new lead'])[1];
+    // Teams only keeps the first line of a pre-typed message, so for Teams it goes as one line ( | between parts).
+    // The full sheet is also copied, so Ctrl+V pastes it with line breaks if anything gets cut.
+    try { navigator.clipboard.writeText(text); } catch (e) {}
+    const oneLine = text.split('\n').filter(Boolean).join('  |  ').slice(0, 1500);
     const url = how === 'teams'
-      ? 'https://teams.microsoft.com/l/chat/0/0?users=' + encodeURIComponent(email) + '&message=' + encodeURIComponent(text)
+      ? 'https://teams.microsoft.com/l/chat/0/0?users=' + encodeURIComponent(email) + '&message=' + encodeURIComponent(oneLine)
       : 'mailto:' + encodeURIComponent(email) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(text);
     const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
     GM_setValue('vpTL', email); GM_setValue('vpTLvia', how);
   }
   function leadPicker() {   // the team-lead choice + Teams / Outlook, used by the pitch sheet and the disposition screen
     const last = GM_getValue('vpTL', ''), via = GM_getValue('vpTLvia', 'teams');
+    if (flowUrl()) return `<select class="tlsel">${TEAM_LEADS.map(([n, e]) => `<option value="${e}"${e === last ? ' selected' : ''}>${n}</option>`).join('')}</select><span class="tlvia" style="border:0;font-size:12px;opacity:.75;padding:0 4px">PDF · Teams</span>`;
     return `<select class="tlsel">${TEAM_LEADS.map(([n, e]) => `<option value="${e}"${e === last ? ' selected' : ''}>${n}</option>`).join('')}</select>
       <span class="tlvia"><button type="button" data-via="teams" class="${via === 'teams' ? 'on' : ''}">Teams</button><button type="button" data-via="outlook" class="${via === 'outlook' ? 'on' : ''}">Outlook</button></span>`;
   }
@@ -3882,14 +3971,17 @@ function readHomesPage(doc) {
     let m = byId('vl-tlbox');
     if (m) { m.remove(); return; }
     m = document.createElement('div'); m.id = 'vl-tlbox';
-    m.innerHTML = `<b>Send this pitch sheet to</b>${leadPicker()}<button type="button" class="go" data-go="teams">Send in Teams</button><button type="button" class="go2" data-go="outlook">Send in Outlook</button><button type="button" class="x" data-x="1">✕</button>
-      <div class="note">Opens a ${'Teams chat / Outlook email'} with the summary typed in; you press send. Add the PDF from Save as PDF if you want it attached.</div>`;
+    m.innerHTML = flowUrl()
+      ? `<b>Send this pitch sheet to</b>${leadPicker()}<button type="button" class="go full" data-go="flow">Send PDF to team lead in Teams</button><button type="button" class="x" data-x="1">✕</button>
+         <div class="note">Goes straight to them in Teams with the PDF (saved in SharePoint). Or open it yourself: <a href="#" data-go="teams">Teams</a> · <a href="#" data-go="outlook">Outlook</a></div>`
+      : `<b>Send this pitch sheet to</b>${leadPicker()}<button type="button" class="go" data-go="teams">Send in Teams</button><button type="button" class="go2" data-go="outlook">Send in Outlook</button><button type="button" class="x" data-x="1">✕</button>
+         <div class="note">The PDF downloads and a Teams chat / Outlook email opens with the summary typed in: drag the PDF in and press send.</div>`;
     byId('vl-pitch').appendChild(m);
     m.querySelector('.tlvia').remove();
     m.addEventListener('click', (e) => {
       if (e.target.closest('[data-x]')) { m.remove(); return; }
       const g = e.target.closest('[data-go]'); if (!g) return;
-      sendVia(g.dataset.go, m.querySelector('.tlsel').value, pitchSummary()); m.remove();
+      e.preventDefault(); sendLead(m.querySelector('.tlsel').value, pitchSummary(), g.dataset.go === 'flow' ? '' : g.dataset.go); m.remove();
     });
   }
 

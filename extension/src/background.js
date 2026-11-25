@@ -28,7 +28,8 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
   if (m.t === 'xhr') {
     let host = '';
     try { host = new URL(m.url).hostname; } catch (e) {}
-    if (!ALLOWED.includes(host)) { reply({ error: 'blocked host' }); return; }
+    const flow = m.method === 'POST' && /\.(powerplatform\.com|logic\.azure\.com)$/.test(host);   // Send to Team Lead flow
+    if (!ALLOWED.includes(host) && !flow) { reply({ error: 'blocked host' }); return; }
     const ctl = new AbortController();
     const tm = setTimeout(() => ctl.abort(), m.timeout || 20000);
     fetch(m.url, { method: m.method || 'GET', headers: m.headers || {}, body: m.data, credentials: 'include', signal: ctl.signal })
