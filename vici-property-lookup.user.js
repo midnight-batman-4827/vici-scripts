@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.9
+// @version      16.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -35,8 +35,12 @@
   // so Vici's old screen never flashes. (Shown after 3 seconds no matter what.)
   const LL_PAGE = /\/vicidial\/admin_listloader/.test(location.pathname);
   const ADMIN_PAGE = /\/vicidial\/admin\.php$/.test(location.pathname);
+  // Agent screen with the opening animation on: hidden from the first moment too, so Vici's screen (and its
+  // green in-group box) never shows before the animation. The login screen is shown again right away.
+  let AGC_COVER = false;
+  try { AGC_COVER = /\/agc\/vicidial\.php/.test(location.pathname) && GM_getValue('vpView', 'agency') !== 'classic' && GM_getValue('vpIntro', true) !== false; } catch (e) {}
   let reveal = () => {};
-  if (LL_PAGE || ADMIN_PAGE) {
+  if (LL_PAGE || ADMIN_PAGE || AGC_COVER) {
     const ph = document.createElement('style');
     ph.textContent = 'html{visibility:hidden!important}';
     const root = () => document.head || document.documentElement;
@@ -225,10 +229,15 @@ function readHomesPage(doc) {
   if (ADMIN_PAGE) { let r = false; try { if (!stepAside()) r = adminUI(); } finally { if (r !== 'redirect') reveal(); } return; }
   // Agent screen: Agency View (everything below) or Classic Vici (exactly Vici as if this script were off).
   // Chosen per PC from the menu by Log out or on the login screen; it takes effect at the next login.
-  if (/\/agc\//.test(location.pathname) && !stepAside()) {
-    const classic = GM_getValue('vpView', 'agency') === 'classic';
-    if (loginSwitch()) return;
-    if (classic) { classicButton(); return; }   // Classic Vici: nothing else of ours, just one small way back
+  if (/\/agc\//.test(location.pathname)) {
+    if (stepAside()) reveal();
+    else {
+      const classic = GM_getValue('vpView', 'agency') === 'classic';
+      if (loginSwitch()) { reveal(); return; }
+      if (classic) { reveal(); classicButton(); return; }   // Classic Vici: nothing else of ours, just one small way back
+      if (GM_getValue('vpIntro', true)) introCover();
+      reveal();
+    }
   }
 
   // Vici's login screen: a small switch between Agency View and Classic Vici. Returns true on the login screen.
@@ -245,6 +254,28 @@ function readHomesPage(doc) {
     draw();
     document.body.appendChild(box);
     return true;
+  }
+
+  // Paper cover shown from the first moment on the agent screen (opening animation on). The animation takes over
+  // from it; it's dropped early if Vici shows something the agent has to act on, and never stays past 15 seconds.
+  let coverTicks = 0;
+  function coverWatch() {
+    const c = byId('vl-cover'); if (!c) return;
+    // Vici is showing something the agent must act on (a choice, an error, another session…): let them see it
+    if (document.documentElement.classList.contains('vl-takeover') && !(groupsDone && byId('CloserSelectBox') && getComputedStyle(byId('CloserSelectBox')).visibility === 'visible')) {
+      if (++coverTicks >= 2) { c.remove(); introDone = true; }
+    } else coverTicks = 0;
+  }
+  function introCover() {
+    if (document.getElementById('vl-cover')) return;
+    let dark = false; try { dark = GM_getValue('vpTheme', 'clean') === 'dark'; } catch (e) {}
+    const c = document.createElement('div');
+    c.id = 'vl-cover';
+    c.style.cssText = `position:fixed;inset:0;z-index:2147483400;background:${dark ? '#0d1626' : '#f4f1ea'};transition:opacity .4s;display:flex;align-items:center;justify-content:center;cursor:pointer`;
+    c.innerHTML = `<div style="font:700 10px Consolas,monospace;letter-spacing:.14em;color:${dark ? '#8fa6c6' : '#8a8478'}">GETTING YOUR SCREEN READY…</div>`;
+    c.addEventListener('click', () => c.remove());
+    document.documentElement.appendChild(c);
+    setTimeout(() => c.remove(), 15000);
   }
 
   // Classic Vici agent screen: one small button in the bottom-right corner to go back to Agency View (next login)
@@ -2388,7 +2419,7 @@ function readHomesPage(doc) {
       // just right of them is not covered by one of Vici's boxes (pause, dispo, login…)
       const row = byId('Tabs');
       if (!ref || !addr1 || !row || document.documentElement.classList.contains('vl-takeover')) return false;
-      const x = L.tabs[0] + (tabBar ? tabBar.offsetWidth : 200) + 30 - window.scrollX, y = 30 - window.scrollY;
+      const x = (L.tabs[0] + (tabBar ? tabBar.offsetWidth : 200) + 30) * Z() - window.scrollX, y = 30 * Z() - window.scrollY;
       if (x < 0 || y < 0 || x > window.innerWidth) return true;
       const hit = document.elementFromPoint(x, y);
       return !hit || row.contains(hit) || hit === document.body || hit === document.documentElement;
@@ -2422,8 +2453,8 @@ function readHomesPage(doc) {
   // cover the same area the SCRIPT screens use
   function placeScreen() {
     if (LAYOUT_ON && byId('vl-form')) {   // new layout: the property page is the only thing on screen (below the tabs)
-      const top = Math.round(tabBar.getBoundingClientRect().bottom + 4);
-      Object.assign(screen.style, { position: 'fixed', left: '0px', top: top + 'px', width: window.innerWidth + 'px', height: (window.innerHeight - top) + 'px' });
+      const z = Z(), top = Math.round(tabBar.getBoundingClientRect().bottom / z + 4);
+      Object.assign(screen.style, { position: 'fixed', left: '0px', top: top + 'px', width: Math.floor(window.innerWidth / z) + 'px', height: Math.floor(window.innerHeight / z - top) + 'px' });
       screen.classList.add('vp-full');
       return;
     }
@@ -2701,7 +2732,7 @@ function readHomesPage(doc) {
         #vl-livebadge.off{background:#e3e6ea;color:#6b7480;border:1px solid #b9c0c8}#vl-livebadge.off i{background:#9aa3ad}
         #vl-livebadge.on{background:#1aa33c;color:#fff}#vl-livebadge.on i{background:#d9ffd9;box-shadow:0 0 0 3px rgba(255,255,255,.35)}
         #vl-livebadge.dead{background:#c4252b;color:#fff}#vl-livebadge.dead i{background:#ffd5d5}
-        .vl-full{left:0!important;top:0!important;width:100vw!important;height:100vh!important;background:#fff;z-index:2147483000!important}
+        .vl-full{left:0!important;top:0!important;width:calc(100vw / var(--vlz, 1))!important;height:calc(100vh / var(--vlz, 1))!important;background:#fff;z-index:2147483000!important}
         .vl-full>table{width:100%!important;height:100%!important}
         html.vl-takeover #vprop-tabbar,html.vl-takeover #vprop-card,html.vl-takeover #vprop-screen,html.vl-takeover [id^="vl-"]:not(#vl-hidden):not(#vl-style):not(#vl-pitch-style),
         html.vl-takeover #AgentViewSpan,html.vl-takeover #AgentViewLinkSpan,html.vl-takeover #webphoneSpan,html.vl-takeover #SecondSspan{visibility:hidden!important}
@@ -2930,6 +2961,7 @@ function readHomesPage(doc) {
     hotKeysSwitch();
     try { pitchSheet(); } catch (e) {}
     try { scriptPanel(); } catch (e) {}
+    fitScreen();
     topRight();
     logo();
     scrollLock();
@@ -3032,9 +3064,24 @@ function readHomesPage(doc) {
       // only Vici's own boxes matter (our pieces restyle themselves all the time)
       if (!recs.some((r) => !/^(vl-|vprop)/.test(r.target.id || '') && !(r.target.closest && r.target.closest('[id^="vl-"],[id^="vprop"]')))) return;
       if (tkQueued) return; tkQueued = true;
-      queueMicrotask(() => { tkQueued = false; try { takeover(); scriptCover(); xferCard(); } catch (e) {} });
+      queueMicrotask(() => { tkQueued = false; try { autoGroups(); takeover(); scriptCover(); xferCard(); } catch (e) {} });
     });
     tkObs.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
+  }
+
+  // Vici's green "CLOSER INBOUND GROUP SELECTION" box after login: when it only says "Manager has selected groups
+  // for you" there is nothing to pick, so Vici's own SUBMIT is clicked for the agent. A box with real choices stays.
+  let groupsDone = false;
+  function autoGroups() {
+    if (groupsDone) return;
+    const b = byId('CloserSelectBox'), t = byId('CloserSelectContent');
+    if (!b || !t || getComputedStyle(b).visibility !== 'visible') return;
+    if (!/^\s*Manager has selected groups for you\s*$/i.test(t.textContent)) return;
+    const go = [...b.querySelectorAll('a')].find((x) => /CloserSelect_submit/.test(x.getAttribute('onclick') || ''));
+    if (!go) return;
+    groupsDone = true;
+    b.style.opacity = '0';
+    go.click();
   }
 
   // SCRIPT / SCRIPT 2 just opened: hide the card and pitch sheet right away (they come back on the next check)
@@ -3123,7 +3170,7 @@ function readHomesPage(doc) {
       byId('vl-hksw').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') flip(e); });
     }
     // under the property card (or under the pitch sheet's bottom line, whichever is lower)
-    const pc = byId('vprop-card'), cb = pc && pc.style.display !== 'none' ? pc.getBoundingClientRect().bottom + window.scrollY : 0;
+    const pc = byId('vprop-card'), cb = pc && pc.style.display !== 'none' ? pc.offsetTop + pc.offsetHeight : 0;
     const top = Math.max(L.pitch[1] + L.pitch[3] + 12, Math.round(cb) + 12);
     if (t.style.left !== L.card[0] + 'px' || t.style.top !== top + 'px') { t.style.left = L.card[0] + 'px'; t.style.top = top + 'px'; }
     // The agent's choice sticks (saved on this PC). Vici turns Hot Keys off at every hang up and only
@@ -3170,7 +3217,8 @@ function readHomesPage(doc) {
         if (e.target.closest('[data-big]')) { e.preventDefault(); scriptBig(!p.classList.contains('big')); }
       });
     }
-    if (p.classList.contains('big')) { const tb = byId('vprop-tabbar'); p.style.top = Math.round((tb ? tb.getBoundingClientRect().bottom : 48) + 4) + 'px'; }
+    if (p.classList.contains('big')) { const tb = byId('vprop-tabbar'), z = Z(), t = Math.round((tb ? tb.getBoundingClientRect().bottom : 48) / z + 4);
+      Object.assign(p.style, { top: t + 'px', width: Math.floor(window.innerWidth / z) + 'px', height: Math.floor(window.innerHeight / z - t) + 'px' }); }
     p.style.display = openKey ? 'none' : 'flex';
     const src = byId(scriptTab), html = src && src.textContent.trim() ? src.innerHTML : '';
     if (html !== scriptLast) {
@@ -3185,7 +3233,7 @@ function readHomesPage(doc) {
     if (on && openKey) closeScreen();
     p.classList.toggle('big', on);
     p.querySelector('[data-big]').textContent = on ? '✕ Back to the call' : 'Full screen';
-    if (!on) Object.assign(p.style, { top: L.script[1] + 'px' });
+    if (!on) Object.assign(p.style, { top: L.script[1] + 'px', width: L.script[2] + 'px', height: L.script[3] + 'px' });
     document.documentElement.classList.toggle('vl-big', on || !!openKey);
     scriptPanel();
   }
@@ -3193,9 +3241,9 @@ function readHomesPage(doc) {
   // ---------- Log out at the top right, the call badge under it (right edges lined up) ----------
   function topRight() {
     const g = byId('vl-groups'), lo = g && g.querySelector('a[onclick*="NormalLogout"]');
-    if (lo) { const w = Math.round(lo.getBoundingClientRect().width); if (w) { g.style.left = (L.right - w) + 'px'; g.style.top = '22px'; const m = themeMenu(); m.style.left = (L.right - w - 40) + 'px'; m.style.top = '22px'; } }
+    if (lo) { const w = Math.round(lo.getBoundingClientRect().width / Z()); if (w) { g.style.left = (L.right - w) + 'px'; g.style.top = '22px'; const m = themeMenu(); m.style.left = (L.right - w - 40) + 'px'; m.style.top = '22px'; } }
     const lv = byId('vl-live'), b = byId('vl-livebadge');
-    if (lv && b) { const w = Math.round(b.getBoundingClientRect().width); if (w) { lv.style.left = (L.right - w) + 'px'; lv.style.top = '60px'; } }
+    if (lv && b) { const w = Math.round(b.getBoundingClientRect().width / Z()); if (w) { lv.style.left = (L.right - w) + 'px'; lv.style.top = '60px'; } }
   }
 
   // ---------- Themes (Vici grey / Navy / Clean / Dark) and the screen switch, in a menu left of Log out ----------
@@ -3238,12 +3286,22 @@ function readHomesPage(doc) {
     return w;
   }
 
+  // ---------- Fit to the window: the layout is drawn for 1920 x 880 and scaled to whatever the window is,
+  // so zooming in/out (Ctrl + / Ctrl -) or a different screen size always shows the whole screen ----------
+  const Z = () => parseFloat(document.body.style.zoom) || 1;
+  function fitScreen() {
+    const z = Math.max(.5, Math.min(2, Math.min(window.innerWidth / 1920, window.innerHeight / 880)));
+    const v = String(Math.round(z * 1000) / 1000);
+    if (document.body.style.zoom !== v) { document.body.style.zoom = v; document.documentElement.style.setProperty('--vlz', v); }
+  }
+  window.addEventListener('resize', () => { if (LAYOUT_ON && byId('vl-form')) { fitScreen(); topRight(); } });
+
   // ---------- Opening animation (once per login; click or any key skips; Off in the half-moon menu) ----------
   // Builders sketch each piece of the screen where it sits, a pixel loader fills, then the screen fades in.
   // It's only a cover: Vici keeps loading and working underneath the whole time.
   let introDone = false;
   function playIntro() {
-    if (!GM_getValue('vpIntro', true)) return;
+    if (!GM_getValue('vpIntro', true)) { const cv = byId('vl-cover'); if (cv) cv.remove(); return; }
     if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const dark = document.documentElement.classList.contains('th-dark');
     const secs = [...document.querySelectorAll('#vl-form .sec')];
@@ -3280,7 +3338,8 @@ function readHomesPage(doc) {
       <div class="ld"><div class="gd">${'<i></i>'.repeat(70)}</div><div class="rw"><span>BUILDING YOUR SCREEN</span><span class="pc">0%</span></div><small>MORTGAGEUSA · AGENCY VIEW</small></div>
       <div class="ab"><div class="ds">${P.slice(0, 6).map((x) => `<i style="background:${x.c}"></i>`).join('')}</div><span>${P.length} builders</span><div class="br"><b></b></div><span class="ct">0 / ${P.length}</span></div>
       <div class="sk">Click or press any key to skip</div>`;
-    document.body.appendChild(ov);
+    document.documentElement.appendChild(ov);
+    const cv = byId('vl-cover'); if (cv) setTimeout(() => cv.remove(), 50);
     let live = true;
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const ease = (t) => 1 - Math.pow(1 - t, 3);
@@ -3615,11 +3674,13 @@ function readHomesPage(doc) {
     if (why) { card.style.display = 'none'; return; }
     const r = anchor.getBoundingClientRect();
     const fixed = LAYOUT_ON && byId('vl-form');
-    const left = fixed ? L.card[0] - window.scrollX : Math.max(8, r.left - 64), top = fixed ? L.card[1] - window.scrollY : r.bottom + 18;
+    const zz = fixed ? Z() : 1;
+    const left = fixed ? L.card[0] - window.scrollX / zz : Math.max(8, r.left - 64), top = fixed ? L.card[1] - window.scrollY / zz : r.bottom + 18;
     // only on Vici's main screen: hide when a SCRIPT panel (or anything else) is on top of this spot
     card.style.display = 'none';
     // only hide when another Vici panel (SCRIPT, pause/login boxes…) is on top of this spot
-    const hit = top + 20 < window.innerHeight && left + 40 < window.innerWidth ? document.elementFromPoint(left + 40, top + 20) : null;
+    const hx = (left + 40) * zz, hy = (top + 20) * zz;
+    const hit = hy < window.innerHeight && hx < window.innerWidth ? document.elementFromPoint(hx, hy) : null;
     let cover = null;
     for (let e = hit; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
       if (e.id && !/^(MainPanel|MainTable|vl-)/.test(e.id) && /panel|box|display|span\d*$/i.test(e.id) && !e.contains(anchor)) { cover = e; break; }
@@ -3646,7 +3707,9 @@ function readHomesPage(doc) {
       clearInterval(loop);
       return;
     }
+    try { autoGroups(); } catch (e) {}
     try { applyLayout(); } catch (e) { /* never let the layout stop the lookups */ }
+    coverWatch();
     const a = getAddress();
     if (!a.missing.length) lookup(a); // starts the lookups as soon as a lead's address pops up
     renderAll();
