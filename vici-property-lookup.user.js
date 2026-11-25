@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      13.5
+// @version      13.6
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1655,6 +1655,7 @@ function readHomesPage(doc) {
     liveBadge();
     modernButtons();
     takeover();
+    watchTakeover();
     hotKeysSwitch();
     try { pitchSheet(); } catch (e) {}
     scrollLock();
@@ -1743,6 +1744,18 @@ function readHomesPage(doc) {
     document.querySelectorAll('.vl-full').forEach((el) => { if (el !== full) el.classList.remove('vl-full'); });
     if (full) full.classList.add('vl-full');
     document.documentElement.classList.toggle('vl-takeover', !!full);
+  }
+
+  // React the instant Vici shows/hides one of those messages (Vici flips the box's style), instead of
+  // waiting for the once-a-second check, so nothing of ours flashes on top of it.
+  let tkObs = null, tkQueued = false;
+  function watchTakeover() {
+    if (tkObs) return;
+    tkObs = new MutationObserver(() => {
+      if (tkQueued) return; tkQueued = true;
+      queueMicrotask(() => { tkQueued = false; try { takeover(); } catch (e) {} });
+    });
+    tkObs.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
   }
 
   // ---------- Live-call light as a badge (Vici's own picture stays, hidden; it tells us the state) ----------
