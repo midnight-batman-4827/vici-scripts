@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.1
+// @version      15.2
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -521,7 +521,7 @@ function readHomesPage(doc) {
       if (!m || n.parentElement.closest('.mu-side,tr.mu-topbar,tr.mu-tabs')) continue;
       if (!title) title = m[1].charAt(0) + m[1].slice(1).toLowerCase();
       n.nodeValue = '';
-      let p = n.parentElement; for (let i = 0; i < 3 && p && !toggle; i++, p = p.parentElement) toggle = [...p.querySelectorAll('a')].find((a) => /^\s*show /i.test(a.textContent) && !lt.contains(a));
+      let p = n.parentElement; for (let i = 0; i < 3 && p && !toggle; i++, p = p.parentElement) toggle = [...p.querySelectorAll('a')].find((a) => /^\s*(show|hide) /i.test(a.textContent) && !lt.contains(a));
       break;
     }
     bigIcons().filter((i) => !lt.contains(i)).forEach((i) => i.classList.add('mu-gone'));
