@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.3
+// @version      15.4
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -2514,6 +2514,8 @@ function readHomesPage(doc) {
         #ManuaLDiaLButtons a[onclick*="'FAST'"]{display:none!important}
         #CallbacksButtons{left:${L.callbacks[0]}px!important;top:${L.callbacks[1]}px!important}
         #SecondSspan{left:${L.seconds[0]}px!important;top:${L.seconds[1]}px!important}
+        html.vl-nocall #SecondSspan{visibility:hidden!important}
+        #Tabs img[src*="vdc_tab_"]{clip-path:inset(1px round 4px)}   /* trims the thin white edge baked into Vici's SCRIPT tab pictures */
         #AgentViewSpan{left:${L.agentsList[0]}px!important;top:${L.agentsList[1]}px!important}
         #webphoneLinkSpan{visibility:hidden!important}
         #dialableleadsspan{left:${L.dialable[0]}px!important;top:${L.dialable[1]}px!important}
@@ -2656,15 +2658,15 @@ function readHomesPage(doc) {
       // what's left of Vici's left column (recording file / record id / stop recording) is hidden
       const leftTd = byId('RecorDControl') && byId('RecorDControl').closest('td');
       if (leftTd) leftTd.style.visibility = 'hidden';
-      // reorganized lead form: Borrower / Property / Loan, then Call Notes (Installments hidden)
+      // reorganized lead form: Borrower above Property, then Loan, then Call Notes (Installments hidden)
       const f = box('vl-form', ...L.form);
       if (!f.childElementCount) {
         const fl = (lab, ids, cls = '') => `<div class="fl ${cls}"><label>${lab}</label><span class="slot" data-s="${ids}"></span></div>`;
         f.innerHTML = `<div class="col">
-          <div class="sec"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg>PROPERTY</h3><div class="g c3">${fl('Address', 'address1', 's3')}${fl('City', 'city')}${fl('State', 'state')}${fl('ZIP', 'postal_code')}</div></div>
           <div class="sec"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>BORROWER</h3><div class="g c2">${fl('First name', 'first_name')}${fl('Last name', 'last_name')}</div>
             <div class="g c3">${fl('Phone', 'phone_numberDISP,phone_number', 'ro')}${fl('Date of birth', 'date_of_birthDISP', 'ro')}${fl('Gender', 'GENDERhideFORie')}</div>
-            <div class="g" style="grid-template-columns:1fr 2fr">${fl('FICO', 'title')}${fl('SSN', 'alt_phone')}</div></div></div>
+            <div class="g" style="grid-template-columns:1fr 2fr">${fl('FICO', 'title')}${fl('SSN', 'alt_phone')}</div></div>
+          <div class="sec"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg>PROPERTY</h3><div class="g c3">${fl('Address', 'address1', 's3')}${fl('City', 'city')}${fl('State', 'state')}${fl('ZIP', 'postal_code')}</div></div></div>
           <div class="col">
           <div class="sec"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M17 7H9.5a2.5 2.5 0 000 5h5a2.5 2.5 0 010 5H6"/></svg>LOAN</h3><div class="g c2">${fl('Loan amount', 'address2')}${fl('Value', 'province')}${fl('Rate', 'security_phrase')}${fl('Loan type', 'vendor_lead_code')}${fl('Cash out', 'address3')}${fl('Revolving debt', 'email')}</div></div>
           <div class="sec grow"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h4"/></svg>CALL NOTES</h3><span class="slot notes" data-s="call_notes"></span></div></div>`;
@@ -2695,6 +2697,12 @@ function readHomesPage(doc) {
         viewsLastClick = viewsTicks; viewsGood = 0;
       } else if (!wpOpen && !avClosed) viewsGood++;
       if (viewsGood >= 5 || viewsTicks > 60) viewsSet = true;
+    }
+    // Vici's own login step hides the agents list but leaves the link saying "Agents View -". An agent closing it
+    // changes the link to "+", so a "-" with a hidden list is always Vici's doing: close + reopen it (never fights the agent).
+    const avl = byId('AgentViewLink') && byId('AgentViewLink').querySelector('a'), avs = byId('AgentViewSpan');
+    if (avl && avs && /View\s*-/.test(avl.textContent) && avs.style.visibility === 'hidden' && !document.documentElement.classList.contains('vl-takeover')) {
+      avl.click(); const again = byId('AgentViewLink').querySelector('a'); if (again && /View\s*\+/.test(again.textContent)) again.click();
     }
     liveBadge();
     modernButtons();
@@ -2862,6 +2870,7 @@ function readHomesPage(doc) {
     const src = img.getAttribute('src') || '';
     const st = /_ON\./i.test(src) ? ['on', 'LIVE CALL'] : /DEAD/i.test(src) ? ['dead', 'CALL HUNG UP'] : ['off', 'NO LIVE CALL'];
     if (b.className !== st[0]) { b.className = st[0]; b.querySelector('span').textContent = st[1]; }
+    document.documentElement.classList.toggle('vl-nocall', st[0] === 'off');   // "seconds:" only shows during a call
   }
 
   // ---------- HOT KEYS on/off switch (drives Vici's own hot keys) ----------
