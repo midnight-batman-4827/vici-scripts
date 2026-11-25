@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      14.0
+// @version      14.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -265,6 +265,16 @@ function readHomesPage(doc) {
     });
   }
   const getJSON = async (url) => { try { return JSON.parse((await gmGet(url)).text); } catch (e) { return null; } };
+  // Address searches: try up to 3 times. Returns null only when the site never answered properly,
+  // so a dropped connection is never mistaken for "this address doesn't exist".
+  async function suggestJSON(url, ok) {
+    for (let i = 0; i < 3; i++) {
+      if (i) await new Promise((r) => setTimeout(r, i * 2000));
+      const r = await gmGet(url);
+      if (r.status === 200) { try { const j = JSON.parse(r.text); if (ok(j)) return j; } catch (e) {} }
+    }
+    return null;
+  }
 
   // How close a suggestion is to the lead: house number and street count most, city least.
   // Only used to rank "close matches"; State and ZIP must already agree.
@@ -299,8 +309,10 @@ function readHomesPage(doc) {
   async function lookupZillow(a) {
     const near = [];
     // second search leaves the city out, for leads whose city is the mailing city (e.g. Detroit vs Redford)
-    for (const q of [a.full, `${a.street} ${a.state} ${a.zip}`]) {
-      const j = await getJSON('https://www.zillowstatic.com/autocomplete/v3/suggestions?q=' + encodeURIComponent(q));
+    const qs = [a.full, `${a.street} ${a.state} ${a.zip}`];
+    const answers = await Promise.all(qs.map((q) => suggestJSON('https://www.zillowstatic.com/autocomplete/v3/suggestions?q=' + encodeURIComponent(q),
+      (j) => j && Array.isArray(j.results))));
+    for (const j of answers) {
       for (const r of ((j && j.results) || [])) {
         const m = r.metaData;
         if (!m || !m.zpid || !m.streetNumber || !sameArea(a, m.state, m.zipCode)) continue;
@@ -308,23 +320,24 @@ function readHomesPage(doc) {
         near.push(zItem(m));
       }
     }
-    return { near: rankNear(a, near) };
+    return { near: rankNear(a, near), failed: answers.some((j) => !j) };
   }
 
   // Realtor.com's own autocomplete -> property id
   const rItem = (r) => ({ id: String(r.mpr_id), line: r.line, city: r.city, state: r.state_code, zip: r.postal_code });
   async function lookupRealtor(a) {
     const near = [];
-    for (const q of [a.full, `${a.street} ${a.state} ${a.zip}`]) {
-      const j = await getJSON('https://parser-external.geo.moveaws.com/suggest?client_id=rdc-home&limit=8&area_types=address&input=' +
-        encodeURIComponent(q));
+    const qs = [a.full, `${a.street} ${a.state} ${a.zip}`];
+    const answers = await Promise.all(qs.map((q) => suggestJSON('https://parser-external.geo.moveaws.com/suggest?client_id=rdc-home&limit=8&area_types=address&input=' +
+      encodeURIComponent(q), (j) => j && (Array.isArray(j.autocomplete) || (j.meta && j.meta.es_total_hits === 0)))));
+    for (const j of answers) {
       for (const r of ((j && j.autocomplete) || [])) {
         if (!r.mpr_id || !r.line || !sameArea(a, r.state_code, r.postal_code)) continue;
         if (sameProperty(a, r.line, r.city, r.state_code, r.postal_code)) return rItem(r);
         near.push(rItem(r));
       }
     }
-    return { near: rankNear(a, near) };
+    return { near: rankNear(a, near), failed: answers.some((j) => !j) };
   }
 
   const cache = {}; // full address -> { zillow, realtor, done, info }
@@ -333,13 +346,37 @@ function readHomesPage(doc) {
     const c = cache[a.full] = { done: false, sites: {} };
     c.promise = Promise.all([lookupZillow(a), lookupRealtor(a)]).then(([z, r]) => {
       // an exact hit has an id; otherwise we keep the close matches for the agent to pick from
-      c.zillow = z.zpid ? z : null; c.zNear = z.near || [];
-      c.realtor = r.id ? r : null; c.rNear = r.near || [];
+      c.zillow = z.zpid ? z : null; c.zNear = z.near || []; c.zFail = !z.zpid && !!z.failed;
+      c.realtor = r.id ? r : null; c.rNear = r.near || []; c.rFail = !r.id && !!r.failed;
       c.done = true;
       refresh();
       loadDetails(a, c);
     });
     return c;
+  }
+
+  // A site that didn't answer gets asked again: by itself after 20s and 60s, or when the agent clicks Try again.
+  async function retrySites(a, c, manual) {
+    if (c.retrying) return;
+    c.retrying = true;
+    if (!manual) c.retries = (c.retries || 0) + 1;
+    const z = c.zFail ? lookupZillow(c.pick || a) : null, r = c.rFail ? lookupRealtor(c.pick || a) : null;
+    const keys = [].concat(c.zFail ? ['zillow', 'trulia'] : [], c.rFail ? ['realtor'] : [],
+      siteState(c, 'homes').state === 'error' ? ['homes'] : []);
+    keys.forEach((k) => { c.sites[k] = { state: 'loading' }; });
+    renderAll();
+    const [zz, rr] = await Promise.all([z, r]);
+    if (zz) { c.zillow = zz.zpid ? zz : null; c.zNear = zz.near || []; c.zFail = !zz.zpid && !!zz.failed; c.zHistory = null; }
+    if (rr) { c.realtor = rr.id ? rr : null; c.rNear = rr.near || []; c.rFail = !rr.id && !!rr.failed; }
+    c.retrying = false;
+    keys.forEach((k) => { c.sites[k] = { state: 'idle' }; loadSite(a, c, k); });
+  }
+  function scheduleRetry(a, c) {
+    if (c.retryTimer || (c.retries || 0) >= 2) return;
+    c.retryTimer = setTimeout(() => {
+      c.retryTimer = null;
+      if (getAddress().full === a.full) retrySites(a, c, false);
+    }, (c.retries || 0) ? 60000 : 20000);
   }
 
   // =====================================================================
@@ -638,8 +675,8 @@ function readHomesPage(doc) {
       if (c.homesAddr) hm.street = c.homesAddr.street;
       return done({ state: 'ok', model: hm, url: r.url, picked: c.homesAddr ? { line: c.homesAddr.street, city: c.homesAddr.city, state: c.homesAddr.state, zip: c.homesAddr.zip } : null });
     }
-    if ((key === 'zillow' || key === 'trulia') && !c.zillow) return done({ state: 'nomatch', near: c.zNear || [] });
-    if (key === 'realtor' && !c.realtor) return done({ state: 'nomatch', near: c.rNear || [] });
+    if ((key === 'zillow' || key === 'trulia') && !c.zillow) return done({ state: c.zFail ? 'offline' : 'nomatch', near: c.zNear || [] });
+    if (key === 'realtor' && !c.realtor) return done({ state: c.rFail ? 'offline' : 'nomatch', near: c.rNear || [] });
 
     const r = await gmGet(c.sites[key].url, 'text/html');
     if (r.status === 403 || r.status === 429 || /px-captcha|Access to this page has been denied|press & hold|kasada|captcha/i.test(r.text.slice(0, 8000))) return done({ state: 'blocked', code: r.status });
@@ -694,12 +731,12 @@ function readHomesPage(doc) {
       const z = (key === 'zillow' || key === 'trulia') ? x : await lookupZillow(p);
       c.zHistory = null;
       if (z && z.zpid) { c.zillow = z; c.zillowPicked = true; ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: 'idle' }; loadSite(a, c, k); }); }
-      else { c.zillow = null; c.zNear = (z && z.near) || []; ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: 'nomatch', near: c.zNear, url: SITES.find((y) => y.key === k).url(a, c) }; }); }
+      else { c.zillow = null; c.zNear = (z && z.near) || []; c.zFail = !!(z && z.failed); ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: c.zFail ? 'offline' : 'nomatch', near: c.zNear, url: SITES.find((y) => y.key === k).url(a, c) }; }); }
     }
     if (rNeeds) {
       const r = key === 'realtor' ? x : await lookupRealtor(p);
       if (r && r.id) { c.realtor = r; c.realtorPicked = true; c.sites.realtor = { state: 'idle' }; loadSite(a, c, 'realtor'); }
-      else { c.realtor = null; c.rNear = (r && r.near) || []; c.sites.realtor = { state: 'nomatch', near: c.rNear, url: SITES.find((y) => y.key === 'realtor').url(a, c) }; }
+      else { c.realtor = null; c.rNear = (r && r.near) || []; c.rFail = !!(r && r.failed); c.sites.realtor = { state: c.rFail ? 'offline' : 'nomatch', near: c.rNear, url: SITES.find((y) => y.key === 'realtor').url(a, c) }; }
     }
     renderAll();
   }
@@ -1027,7 +1064,8 @@ function readHomesPage(doc) {
     car: '<path d="M5 16V11l2-5h10l2 5v5"/><path d="M3 16h18v3H3z"/><circle cx="7.5" cy="13" r="1"/><circle cx="16.5" cy="13" r="1"/>',
     people: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3 3-5 6-5s6 2 6 5"/><path d="M16 11a3 3 0 100-6M21 20c0-2.5-1.8-4.2-4-4.8"/>',
     dollar: '<path d="M12 3v18"/><path d="M17 7H9.5a2.5 2.5 0 000 5h5a2.5 2.5 0 010 5H6"/>',
-    pin: '<path d="M12 21s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>'
+    pin: '<path d="M12 21s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+    retry: '<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/>'
   };
   const icon = (n) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 
@@ -1061,6 +1099,14 @@ function readHomesPage(doc) {
       case 'blocked':
         if (key === 'realtor' || key === 'homes') return fallback('it blocks background lookups');
         return msg(`${esc(s.label)} asked for a bot check. Click <b>Open on ${esc(s.label)}</b>, complete the check once, and the next lead will fill in.`);
+      case 'offline': {
+        const near = st.near || [];
+        return msg(`<b>${esc(s.label)} didn't answer just now</b>, so this address hasn't been checked yet. It isn't a \u201cno match\u201d.
+          ${c && c.retrying ? '<div class="vp-wait-sub">Trying again…</div>' : `<div class="vp-wait-sub">${c && c.retryTimer ? 'Trying again by itself in a few seconds. ' : ''}You can also click <b>Try again</b>.</div>`}
+          <div class="vp-near" style="margin-top:12px"><button type="button" data-vp-retry="1">${icon('retry')}<span>Try again</span></button></div>` +
+          (near.length ? `<div class="vp-near-h">Close matches it did find in ${esc(a.state)} ${esc(a.zip)}:</div>
+          <div class="vp-near">${near.map((x, i) => `<button type="button" data-vp-near="${i}" data-vp-key="${key}">${icon('pin')}<span>${esc(nearLabel(x))}</span></button>`).join('')}</div>` : ''));
+      }
       case 'nomatch': {
         const near = st.near || [];
         if (!near.length) {
@@ -1072,6 +1118,7 @@ function readHomesPage(doc) {
           <div class="vp-near">${near.map((x, i) => `<button type="button" data-vp-near="${i}" data-vp-key="${key}">${icon('pin')}<span>${esc(nearLabel(x))}</span></button>`).join('')}</div>`);
       }
       default:
+        if (key === 'homes' && z.state !== 'ok') return msg(`Homes.com couldn't be read this time. <div class="vp-near" style="margin-top:12px"><button type="button" data-vp-retry="1">${icon('retry')}<span>Try again</span></button></div>`);
         if (key === 'realtor' || key === 'homes') return fallback('the page couldn\'t be read');
         return msg(`Couldn't read this home's details from ${esc(s.label)} right now.`);
     }
@@ -1365,6 +1412,11 @@ function readHomesPage(doc) {
       screen = document.createElement('div');
       screen.id = 'vprop-screen';
       screen.addEventListener('click', (e) => {
+        if (e.target.closest('[data-vp-retry]')) {
+          const a = getAddress(), c = cache[a.full];
+          if (c) { if (c.retryTimer) { clearTimeout(c.retryTimer); c.retryTimer = null; } retrySites(a, c, true); }
+          return;
+        }
         const nb = e.target.closest('[data-vp-near]');
         if (nb) {
           const a = getAddress(), c = cache[a.full];
@@ -1426,12 +1478,13 @@ function readHomesPage(doc) {
     SITES.forEach((s) => {
       const st = c ? siteState(c, s.key).state : 'idle';
       tabs[s.key].classList.toggle('ready', st === 'ok' || st === 'shared');
-      tabs[s.key].classList.toggle('fail', ['blocked', 'nomatch', 'nosource', 'error'].includes(st));
+      tabs[s.key].classList.toggle('fail', ['blocked', 'nomatch', 'nosource', 'error', 'offline'].includes(st));
       tabs[s.key].title = `${s.label}: ` + ({ ok: 'facts ready', shared: 'facts ready', loading: 'loading…', blocked: 'blocked by the site – open it directly',
-        nomatch: 'no exact match', nosource: 'open on the site', error: 'couldn\'t load', idle: 'waiting for a lead address' }[st] || st);
+        nomatch: 'no exact match', offline: 'site didn\'t answer – trying again', nosource: 'open on the site', error: 'couldn\'t load', idle: 'waiting for a lead address' }[st] || st);
     });
     // Homes.com starts on its own as soon as a call's address is looked up (in a background tab)
     if (c && c.done && siteState(c, 'homes').state === 'idle') loadSite(a, c, 'homes');
+    if (c && c.done && !c.retrying && (c.zFail || c.rFail || siteState(c, 'homes').state === 'error')) scheduleRetry(a, c);
     if (!screen || !openKey) return;
     const st = c ? siteState(c, openKey) : {};
     const key = openKey + '|' + a.full + '|' + st.state + '|' + (c ? SITES.map((x) => siteState(c, x.key).state).join(',') : '') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
@@ -1862,19 +1915,21 @@ function readHomesPage(doc) {
     const a = byId('hotkeysdisplay') && byId('hotkeysdisplay').querySelector('a');
     if (a && on !== hkOn()) a.dispatchEvent(new MouseEvent(on ? 'mouseover' : 'mouseout', { bubbles: true }));
   };
-  let hkLead = null;
+  const hkWanted = () => !!GM_getValue('vpHotKeysOn', false);
   function hotKeysSwitch() {
     if (!byId('hotkeysdisplay')) return;
     const wrap = box('vl-hkwrap', ...L.hotkeys);
     if (!byId('vl-hk')) {
-      wrap.innerHTML = '<button type="button" id="vl-hk" title="Click to turn Hot Keys on or off"><i></i><span>HOT KEYS: OFF</span></button><div id="vl-hklist"></div>';
-      byId('vl-hk').addEventListener('click', (e) => { e.preventDefault(); hkSet(!hkOn()); hotKeysSwitch(); });
+      wrap.innerHTML = '<button type="button" id="vl-hk" title="Click to turn Hot Keys on or off. Your choice is remembered on this PC, even after logging out."><i></i><span>HOT KEYS: OFF</span></button><div id="vl-hklist"></div>';
+      byId('vl-hk').addEventListener('click', (e) => { e.preventDefault(); const want = !hkWanted(); GM_setValue('vpHotKeysOn', want); hkSet(want); hotKeysSwitch(); });
     }
-    // a new call starts with Hot Keys off
-    const lead = byId('lead_id') ? byId('lead_id').value : '';
-    if (hkLead !== null && lead !== hkLead && hkOn()) hkSet(false);
-    hkLead = lead;
-    const on = hkOn();
+    // The agent's choice sticks (saved on this PC). Vici turns Hot Keys off at every hang up and only
+    // allows them on a live call, so this switches them back on by itself as each call comes in.
+    const want = hkWanted();
+    const img = document.querySelector('img[name="livecall"]'), live = !!img && /_ON\./i.test(img.getAttribute('src') || '');
+    if (!want && hkOn()) hkSet(false);
+    else if (want && live && !hkOn()) hkSet(true);
+    const on = want;
     byId('vl-hk').classList.toggle('on', on);
     byId('vl-hk').querySelector('span').textContent = 'HOT KEYS: ' + (on ? 'ON' : 'OFF');
     if (on) {
@@ -1887,7 +1942,7 @@ function readHomesPage(doc) {
   }
   // typing a number in a box (Call Notes, Loan Amount…) must never disposition the call
   window.addEventListener('keypress', (e) => {
-    if (!LAYOUT_ON || !hkOn()) return;
+    if (!LAYOUT_ON || !(hkOn() || hkWanted())) return;
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) && t.type !== 'button') e.stopImmediatePropagation();
   }, true);
@@ -2090,6 +2145,8 @@ function readHomesPage(doc) {
     const head = (extra) => `<div class="vc-head"><span class="vc-title">Property at a glance</span><span class="vc-addr">${esc(a.full)}</span><span class="vc-sp"></span>${extra || ''}</div>`;
     if (!c || !c.done || (!ok.length && CARD_ORDER.some((k) => ['loading'].includes(st(k).state) || (k !== 'homes' && st(k).state === 'idle'))))
       return head() + `<div class="vc-wait"><span class="vc-spin"></span>Looking up this property…</div>`;
+    if (!ok.length && (c.retrying || CARD_ORDER.some((k) => st(k).state === 'offline')))
+      return head() + `<div class="${c.retrying ? 'vc-wait' : 'vc-msg'}">${c.retrying ? '<span class="vc-spin"></span>' : ''}The property sites didn't answer just now. ${c.retrying ? 'Trying again…' : c.retryTimer ? 'Trying again by itself in a few seconds.' : 'Open a property tab and click <b>Try again</b>.'}</div>`;
     if (!ok.length) {
       const near = CARD_ORDER.some((k) => (st(k).near || []).length);
       return head() + `<div class="vc-msg">${near ? 'No exact match for this address. <b>Open a property tab to pick the right home</b> from the close matches.' : 'No property details found for this address. Check the spelling, city and ZIP.'}</div>`;
