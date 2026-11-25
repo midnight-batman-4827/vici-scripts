@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      14.1
+// @version      14.2
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -156,6 +156,9 @@ function readHomesPage(doc) {
         .find((el) => /place|address|city/i.test((el.getAttribute('aria-label') || '') + (el.placeholder || ''))), 20000);
       if (!input) return finish({ ok: false, why: 'search box not found' });
       const setVal = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      // Edge slows timers in background tabs a lot, so this helper never decides "no match" by waiting:
+      // it reports each step to the Vici tab (which runs at full speed) and Vici decides when to give up.
+      const progress = (o) => GM_setValue('vpHomesProgress', Object.assign({ id: job.id, t: Date.now() }, o));
       input.focus();
       setVal.call(input, job.query);
       input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -175,18 +178,22 @@ function readHomesPage(doc) {
         if (job.pick) return t.startsWith(norm(job.pick));
         return t.startsWith(num + ' ') && (!city || t.includes(city));
       };
+      const area = new RegExp('\\b' + String(job.state || '').toLowerCase() + ' ' + String(job.zip || '') + '\\b');
+      const nearNow = () => [...new Set(addrBtns().filter((b) => area.test(norm(btnText(b)))).map(label))].slice(0, 5);
+      progress({ stage: 'typed', near: [] });
+      let lastSent = '';
+      const report = new MutationObserver(() => { const n = nearNow(); const k = n.join('|'); if (k !== lastSent) { lastSent = k; progress({ stage: 'list', near: n }); } });
+      report.observe(document.documentElement, { childList: true, subtree: true });
       let btn = await waitFor(() => addrBtns().find(isHit), job.pick ? 20000 : 6000);
       if (!btn && !job.pick) {
         // no exact suggestion: let the list finish filling, then offer the ones in the same State + ZIP
         await waitFor(() => addrBtns().length >= 3 && null, 3000);
         btn = addrBtns().find(isHit);
-        if (!btn) {
-          const area = new RegExp('\\b' + String(job.state || '').toLowerCase() + ' ' + String(job.zip || '') + '\\b');
-          const near = [...new Set(addrBtns().filter((b) => area.test(norm(btnText(b)))).map(label))].slice(0, 5);
-          return finish({ ok: false, why: 'no exact address match on Homes.com', near });
-        }
+        if (!btn) { report.disconnect(); return finish({ ok: false, why: 'no exact address match on Homes.com', near: nearNow() }); }
       }
+      report.disconnect();
       if (!btn) return finish({ ok: false, why: 'no matching address on Homes.com' });
+      progress({ stage: 'clicked', near: [] });
       btn.click(); // the page navigates to the property; this helper runs again there
     })();
   }
@@ -750,27 +757,38 @@ function readHomesPage(doc) {
     return new Promise((resolve) => {
       const id = Date.now();
       GM_setValue('vpHomesJob', { id, t: id, query: pick || a.full, street: a.street, city: a.city, state: a.state, zip: a.zip, pick: pick || '' });
-      let tab = null, done = false;
-      const listener = GM_addValueChangeListener('vpHomesResult', (name, oldV, v) => {
-        if (!v || v.id !== id || done) return;
-        done = true; GM_removeValueChangeListener(listener);
+      let tab = null, done = false, alive = false, near = [], giveUp = null;
+      const timers = [];
+      const finish = (v) => {
+        if (done) return;
+        done = true; GM_removeValueChangeListener(listener); GM_removeValueChangeListener(prog);
+        timers.concat(giveUp ? [giveUp] : []).forEach(clearTimeout);
         try { tab && tab.close(); } catch (e) {}
         resolve(v);
+      };
+      const listener = GM_addValueChangeListener('vpHomesResult', (name, oldV, v) => { if (v && v.id === id) finish(v); });
+      // The helper reports as it goes. Once it has typed the address, Vici (not the slowed-down
+      // background tab) keeps the clock: no matching suggestion in 9 seconds = no exact match.
+      const prog = GM_addValueChangeListener('vpHomesProgress', (name, oldV, v) => {
+        if (!v || v.id !== id || done) return;
+        alive = true;
+        if (v.near) near = v.near;
+        if (v.stage === 'typed' && !giveUp) giveUp = setTimeout(() => finish({ ok: false, why: 'no exact address match on Homes.com', near }), pick ? 20000 : 9000);
+        if (v.stage === 'clicked' && giveUp) { clearTimeout(giveUp); giveUp = null; }   // found it; the property page is loading
       });
-      // First try a background tab the agent never sees (it renames itself and closes when done).
-      // Some browsers slow background tabs down a lot; if it hasn't answered in 15 seconds,
-      // switch to the small pop-up window, which always runs at full speed.
+      // First a background tab the agent never sees (it renames itself and closes when done).
+      // If it hasn't even started after 15 seconds, switch to the small pop-up window (full speed).
       const url = 'https://www.homes.com/#vprop-' + id;
       tab = GM_openInTab(url, { active: false, insert: true, setParent: true });
-      setTimeout(() => {
-        if (done) return;
+      timers.push(setTimeout(() => {
+        if (done || alive) return;
         try { tab && tab.close(); } catch (e) {}
         const w = 520, h = 420;
         let pop = null;
         try { pop = window.open(url, 'vprop-homes', `popup=yes,width=${w},height=${h},left=${Math.max(0, screen.availWidth - w - 20)},top=${Math.max(0, screen.availHeight - h - 60)}`); } catch (e) { pop = null; }
         tab = pop ? { close: () => { try { pop.close(); } catch (e) {} } } : GM_openInTab(url, { active: false, insert: true, setParent: true });
-      }, 15000);
-      setTimeout(() => { if (done) return; done = true; GM_removeValueChangeListener(listener); try { tab && tab.close(); } catch (e) {} resolve(null); }, 50000);
+      }, 15000));
+      timers.push(setTimeout(() => finish(null), 60000));
     });
   }
 
