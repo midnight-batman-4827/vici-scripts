@@ -9,3 +9,8 @@ Windows Registry Editor Version 5.00
 
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\PopupsAllowedForUrls]
 "1"="[*.]talkitpro.com"
+
+; Send to Team Lead: gives every PC the Power Automate flow URL (agents never see or type it).
+; Paste the flow's HTTP URL between the quotes. Keep this filled-in copy PRIVATE: never upload it to GitHub.
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Edge\3rdparty\extensions\EXTENSION_ID\policy]
+"flowUrl"="PASTE_FLOW_URL_HERE"

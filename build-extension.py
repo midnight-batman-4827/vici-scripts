@@ -32,6 +32,7 @@ manifest = {
     'icons': {s: f'icons/icon{s}.png' for s in ('16', '32', '48', '128')},
     'background': {'service_worker': 'background.js'},
     'permissions': ['storage', 'declarativeNetRequestWithHostAccess'],
+    'storage': {'managed_schema': 'managed_schema.json'},
     'host_permissions': [
         'https://www.zillowstatic.com/*', 'https://parser-external.geo.moveaws.com/*',
         'https://www.zillow.com/*', 'https://www.trulia.com/*', 'https://www.realtor.com/*',
@@ -41,6 +42,9 @@ manifest = {
         'js': ['content.js'], 'run_at': 'document_start'}],
 }
 json.dump(manifest, open(os.path.join(out, 'manifest.json'), 'w'), indent=2)
+# settings an admin can push to every PC through Edge policy (see extension/force-install-edge.reg)
+json.dump({'type': 'object', 'properties': {'flowUrl': {'title': 'Send to Team Lead flow URL', 'description': 'HTTP URL of the Power Automate flow that files pitch sheets in SharePoint and posts them to the team lead in Teams.', 'type': 'string'}}},
+          open(os.path.join(out, 'managed_schema.json'), 'w'), indent=2)
 
 os.makedirs(os.path.join(ROOT, 'dist'), exist_ok=True)
 zpath = os.path.join(ROOT, 'dist', f'mortgageusa-property-lookup-{version}.zip')

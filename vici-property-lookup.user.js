@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      16.6
+// @version      16.8
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -3111,7 +3111,7 @@ function readHomesPage(doc) {
   function takeover() {
     let full = null, top = -1;   // the one on top, if several are open
     document.querySelectorAll('body > span[id], #vicidial_form > span[id]').forEach((el) => {
-      if (/^vl-|^vprop/.test(el.id)) return;
+      if (/^vl-|^vprop|^LoadingBox$/.test(el.id)) return;   // Vici's "Loading…" box at login isn't a message (the intro covers it)
       const cs = getComputedStyle(el), z = parseInt(cs.zIndex, 10) || 0;
       if (cs.visibility !== 'visible' || cs.display === 'none' || z < 40 || z <= top) return;
       const t = el.querySelector('table'); if (!t) return;
@@ -3357,6 +3357,7 @@ function readHomesPage(doc) {
     document.addEventListener('click', (e) => { if (!e.target.closest('#vl-theme')) w.classList.remove('open'); });
     const flowBox = w.querySelector('.flow');
     const drawFlow = (edit) => {
+      if (policyFlow()) { flowBox.innerHTML = '<span class="ok">Connected ✓</span> <span style="opacity:.7">set by your company</span>'; return; }
       flowBox.innerHTML = flowUrl() && !edit ? '<span class="ok">Connected ✓</span> <a href="#" data-fl="edit">change</a>'
         : '<input type="password" placeholder="Paste the flow URL (admin, once per PC)" autocomplete="off"><a href="#" data-fl="save">Save</a>' + (GM_getValue('vpFlowUrl', '') ? ' · <a href="#" data-fl="clear">remove</a>' : '');
     };
@@ -3801,7 +3802,7 @@ function readHomesPage(doc) {
       ps.addEventListener('click', (e) => {
         const a = e.target.closest('[data-a]');
         if (a) { e.preventDefault();
-          if (a.dataset.a === 'pdf') pitchPDF();
+          if (a.dataset.a === 'pdf') downloadPdf(pitchPdf(''), pdfFileName());
           else if (a.dataset.a === 'cob') { const cb = ps.querySelector('.cob'), open = cb.hidden; cb.hidden = !open; ps.querySelector('.cob-off').hidden = open; a.textContent = open ? '− Remove co-borrower' : '+ Add co-borrower'; }
           else if (a.dataset.a === 'send') sendToLead();
           return; }
@@ -3871,10 +3872,10 @@ function readHomesPage(doc) {
     const v = (id) => (byId(id) ? String(byId(id).value || '').trim() : '');
     const a = getAddress(), c = a.missing.length ? null : cache[a.full], zm = c && siteState(c, 'zillow').model;
     const est = zm && isNum(zm.estimate) ? zm.estimate : null, loan = parseMoney(byLabel(/^Loan\s*Amount/i));
-    const agent = ((byId('Header') || {}).textContent || '').match(/Logged in as User\W+([\w.-]+)/i);
+    const agent = agentInfo().label;
     const L2 = (k, x) => x ? `${k}: ${x}` : '';
     return [
-      'PITCH SHEET' + (agent ? ' from agent ' + agent[1] : ''),
+      'PITCH SHEET' + (agent ? ' from ' + agent : ''),
       L2('Borrower', f('borrower') || [v('first_name'), v('last_name')].filter(Boolean).join(' ')),
       L2('Phone', f('phone') || v('phone_number')), L2('Cell', f('cell')), L2('Email', f('email')),
       L2('Property', a.missing.length ? '' : a.full), L2('Occupancy', pills('occ')), L2('Property type', pills('ptype')),
@@ -3885,63 +3886,201 @@ function readHomesPage(doc) {
       L2('Pitch', [pills('pitch'), f('pitch')].filter(Boolean).join(' – '))
     ].filter(Boolean).join('\n');   // never includes the SSN
   }
-  // A small text PDF of the pitch sheet, made right here (no print window, nothing leaves the PC until it's sent)
-  function pitchPdf(text, leadName) {
-    const asc = (x) => String(x).replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[·•]/g, '-').replace(/…/g, '...').replace(/[^\x20-\x7e]/g, '?');
-    const esc = (x) => asc(x).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
-    const wrap = (x, n) => { const out = []; let line = ''; String(x).split(' ').forEach((w) => { if ((line + ' ' + w).trim().length > n) { if (line) out.push(line); line = w; } else line = (line + ' ' + w).trim(); }); if (line) out.push(line); return out.length ? out : ['']; };
-    const rows = [];   // [font, size, text, gapBefore]
-    const lines = text.split('\n');
-    rows.push(['F2', 18, 'Pitch sheet', 0]);
-    rows.push(['F1', 10, 'MortgageUSA  |  ' + new Date().toLocaleString('en-US') + (leadName ? '  |  for ' + leadName : ''), 6]);
-    lines.slice(1).forEach((l) => {
-      const m = l.match(/^([^:]{1,30}):\s*(.*)$/);
-      if (!m) { wrap(l, 92).forEach((w, i) => rows.push(['F1', 11, w, i ? 0 : 6])); return; }
-      rows.push(['F2', 10, m[1].toUpperCase(), 12]);
-      m[2].split(/\s*\|\s*|\n/).forEach((part) => wrap(part, 88).forEach((w) => rows.push(['F1', 12, w, 2])));
+  // The agent's name from their Vici user record (Admin → Users → Full Name), with their user ID
+  function agentInfo() {
+    const id = (((byId('Header') || {}).textContent || '').match(/Logged in as User\W+([\w.-]+)/i) || [, ''])[1];
+    let name = '';
+    try { const m = [...document.scripts].map((s) => s.textContent).join('\n').match(/LOGfullname\s*=\s*(['"])([^'"]*)\1/); if (m) name = m[2].trim(); } catch (e) {}
+    return { id, name, label: name && name !== id ? name + (id ? ' (' + id + ')' : '') : id };
+  }
+  // ---------- Pitch sheet PDF: laid out like the Vici pitch sheet, with fillable boxes and checkboxes, made right here ----------
+  const PDF_LOGO = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBAUEBAYFBQUGBgYHCQ4JCQgICRINDQoOFRIWFhUSFBQXGiEcFxgfGRQUHScdHyIjJSUlFhwpLCgkKyEkJST/2wBDAQYGBgkICREJCREkGBQYJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCT/wAARCACnAWgDASIAAhEBAxEB/8QAHQABAAMAAwEBAQAAAAAAAAAAAAYHCAQFCQECA//EAFkQAAEDAwEEBQUKBwoNAwUAAAECAwQABQYRBxIhMQgTQVFhFCJicYEXMkJSVnKRlKHSFRYYI5Kz0TY3Y3R1k5WyweImMzVERlNVV3OCorHhJNPxJUNkwvD/xAAbAQEAAgMBAQAAAAAAAAAAAAAABQYBAgQDB//EADkRAAIBAgIGBwYFBAMAAAAAAAABAgMEBRESEyExQVEGYXGBkaHRFCJSscHwMlOi0uEVFiNyQoKS/9oADAMBAAIRAxEAPwDVFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlRvMdoFiwiL1t0lAvqTq1Fa85131DsHidBXrRoVK01TpRbb4I0qVI046U3kiRqUlCSpRCUgakk6ACursuVWPInpLNpukWa5FVuupaXqU+PiPEcKzhle0nKNps4WqCw81EeVut26JqpTv/EI4q+xI+2uRL2X5zgMSNkcNZD7Q3nUwVlTkYekNNFJ056ajv4catcOi8KdNRu6yhVl+GPr/AB57iHli8pSzowcoLe/T78DTlKq7ZxttgZN1Vtvhat90OiUOa6MyT4H4Kj3Hh3Hsq0arV7Y17Oo6VeOT+fYSlvcU68dOm80KUpXIe4pSlAKUpQClKUApSlAKUpQClKUApSlAKUpQClKUApSlAKUpQClKUApSlAKUpQClKUApSlAKUpQClKUAr+UuXHgRnJMp9thhpO8txxQSlI7yTyqH51tXsODoUw455bctNUw2FDeT888kD18e4VQd8yjLdrF3bhBL0kqVqzb4oIabHeR4fGUfoqw4X0dr3i1tT3KfxPl1eu4jLzE6dB6EfelyRYOe9IFKest+JJ3jxSq4up4D/hoPP5yvoqF4hsxyXaRNN0mvPMQ3lbzlxlaqW98wHiv18APsqZ2LZZjWz63ov2fTYz7yfObie+aCue6BzdV4aaf96i+e7brrkiV2+xhdptWm55h0edT3KI96PRT9Jq12KUU7fBobN0qkt3dzfl1cSHrtt6y+l2QX15fMmNwy/C9jcN21YzFbuV6I3XnCre87+FcH9RP2VDLFt2ym33pybcX03CG+oF2IoBCUD+DPwdPaD299V7b7dMusxqFBjOyZLx3W2mk6qUfVV84NsZtmKR03zMXI78lvRSYxO8yyezX/AFivDl6+del7b4bhtGTvP8lSe/PbJ9nwr5c2a0Kt1dVEqHuxXLcvU/OSbK7TtGs7eT4oyu1TJaS6Y8hotIfPbqn4Kj8YapPPxrhYRn2X4UoWrLrJd37Yyer8rVHWpcYD0tNFo9uunInlUiyPO5V0Jj28uRIg4ag6OOesj3o8BXSoyS9NLQpN1meYdQC6SPaOR9tU1Y650nbXENOHDN+9Hsl/HlsJx4elNVactGXHLc+4uG2XOFeYTU63SmZcV0aodaVvJP8A58OyuBl1yk2myOy4iwh5KkAEpB5qAPA10+IZdb5hMd9iPBmunVSkJCEPq7/neBrnZ/8AuYf+e3/WFQc9HSejuJCOeW3eQs59fx/nTX8ympBhGT3S9XV2PNfQ42lgrAS2E8d4DmPXVe1Ldmf+XH/4sf6ya1MlmUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpVZ59tvs+L9ZCtPV3W5p4EIV+ZZPpKHM+in2kV12djXu6mqoRzf3v5HjXuKdGOnUeSJ9eb3bsfgOT7pMZiRm+bjh049wHMnwHGqGz3b5Pu3WQMYDlviHUKlq4PuD0fiD7fVULekZdtVvyUnyi5Sz71CfNajpPh71CfE8/GrMtuC4fsnhNXjMpbNwuhG8zESN9IV6CD78+krQDwq6W+EWeFuLuv8tZ7oLb5fV7Oogat7Xu81R9yC3yf35IiGCbHb1mSk3K5KcttsWd9Uh4auv9pKQe/wCMrh66l932j4lsvguWPCITEydydlE7zYV3rXzcPgOA7xyqDZ7tgveaFyIypVttR4eStK850fwihz9Q0HrqBpSVEJAJPIAVPxwy4vmqmIvKPCmt3/Z8X5fIjndU7daNqtvxPf3cjsL7kF0ya4LuF2muy5CvhLPBI7kjkkeAruMH2dXrO5e5Ba6qIg6PTHQerb8B8ZXgPbpU32d7C3rkhu7ZWFwoIG+mGTuOuDvWfgJ8OfqqwbvmcS1REWjGWWo8dlO4HW0AIQO5A/t/+ajcX6UUbOPs1ik5LZn/AMV2c/l8jqssJqV3rbjYvNn212rF9ksAx4LXlV0cQOscXoXXPnH4CfRH286i94vs2+SevmO72nvG08EIHgP7edcFa1vOKWtSlrWdSpRJJPrqX43s/fnbkq6BcePzS0OC1+v4o+31V84r16lebqVZZyfFlop0404qMFkkR+zWCdfn+qhtapSdFuq4IR6z/ZzqSXfZu/Fhodt7ypTqE/nG1AAqPen9h+mrAiRI8FhEeM0hlpA81CBoBX9q8jcodSFNLKVJKVJOhBGhB8RXcOZTNk2Ry1SleUIJSW3FHzkaHXQntH21YWR4jCv6C5wYlgea8kc/BQ7R9tVjd7JOskksTGikn3q08ULHeD//ABoDg1L9mn+XJB//ABj/AFk1EKl2zU//AFx8d8ZXP5yaArvaZtSzCxZ1d7dbr27HiMOpS20lpshI3EnmUk8yai/u0Z98onv5lr7tdxtVwnJrntAvMyFYLpJjOPJKHWoylJWNxI4EDjUT9zrMfkxefqi/2VVq87jWSycss3zPvOF22DuyoupClpaMc81HPPJZ59Z2nu0Z98onv5lr7tPdoz75RPfzLX3a6v3Ocx+S95+qL/ZT3Osx+S95+qL/AGV5ay55y8zv9lwT4KXhAmuGdIHILVcAnI3DdoDhG8QhKHWvFOgAPqP0itDWDIbXk9tbuNpmNyoy/hJPFJ7lDmk+BrInuc5h8mLz9UX+yu6xW1bSsMuIn2exXtlZ0DjZiLLbo7lJ04j7R2EV22l7WpvRqJteZV8f6MYZeR1tnUhTqck0ovuW7tXejWVKjeF5VMyWDrcrFcbNObA6xqSypKFeKFEcR4cx9tSSp+E1NaSPktxbzoVHSqLau/zWxilKVseIpSlAKUpQClKUApSlAKUpQClKUApSlAKUpQClK/LjiGW1OOLShCAVKUo6BIHMk0B+q6XKMwsuHQTMvExDCT/i2h5zjp7kp5n/ALDtNVxn232FbesgYsG50oapVNXxZbPoj4Z8eXrqm4UHJdo1+V1YlXS4O8XHVq1Dae9RPBCR7B3CrbhfRapVjr716umtu3Y/Pd3+BDXeLxg9XQWlLy/kk2e7ar3l3WQ7eV2q1ngW21/nXR6ax2eiOHfrX9MF2LXHIGk3S+rNms6RvlTmiXXEc9QDwQn0lewGpNDxrC9jbDdwyWQ3eMh03mojQCg2ewpSeXz1ewVX2c7UL7nTqm5TvktvB1RCZUdzwKzzWfXw7gKtNq51YajCYaulxm1v/wBU9rfWyIqpQlrLyWlP4fXl2Inl92tWDCLeqwbPILGqeC56k6o3vjDXi4r0jw7tap25XObeJrk64Snpcl06rddVvKP/AI8OVcfjU52e7JrvnLiZS96DaQfOlrTxc8Gx8I+PIePKpKlbWeE0pVpvJ8ZPbJ9/0Ryyq17yahFdiW5EXsGO3PJ7ii32mG5JkL46J5IHxlHkkeJq/sQ2a49syit3i/PNTrsOKFaapbV3NJPM+kfsrtEy8e2bW42fHIja5P8A9xZO8Sr4zivhK8OzwqGT7jKuklUmY8p51XarsHcB2DwqhY10orXmdKh7tPzfbyXV4lisMJhQynU2y8kdtkeXzb+ot6mPDB4MpPvvFR7T9ldXbbZMu8oRobKnXDxOnJI7yewV3GNYVMvpS+9vRoX+sI85z5o/t5eurOtdph2eMI0JlLSBzPao95PaaqhMHTY3hMSy7siRuyZg475Hmtn0R/afsqNdIXML3guzKbesfmCHPbkMIS6W0uaBSwDwUCOVWVVZdIrE71mmy+bZ7BBXOnuSI60MpWlJISsEnVRA4DxoDKI6Ue1kn91A+ox/uVcuebYc2snR/wAMyyDeA1ebnICJUnydpXWJ3XT70p3R71PIDlVIjo07WNR/gfI+tMffq6c/2TZpeOj1hWLQLG6/ebdIC5UUPNgtDdd7SrdPvk8iedAU9+VHtZ+VA+ox/uVtnFz+NeB2OTeUoluzbdHfeUpITvOKbSSoacjqTyrDv5NW1gf6HyPrTH363Vg9vk2rC7Bb5rRZlRbdHZebJB3FpbSFDUcOBBoCEZLg0qz78qFvyYY4kAarbHj3jxFRuPIeiuofYcW06g6pWg6EVe1RDJsCYuO/KtoRHknipvk24f8A9T9lAfyxnaA1M3Il1KWXzwS/yQv1/FP2eqv1nua3vC45uEfGvwrbUpBcfalFK2vnI3D5vpAkd+lV5KiPwpC48llbTqOCkLHEf+KkGN5pJs4TFlgyoPLcPvmx6PePA1pUi5Ryi8mdNpWp0qqnWpqceKbaz700/vcR78qAfJY/Xv7lPyoB8lj9d/uVyc62L2vLIy79hTjLMleqlwwd1pw9oH+rV4cvVzqhrhbpdqmOwp0d2NJZVuuNOp3VJPiDUDc3F5QeU5bOeS9D61g2EdG8Vp6dCl7y3xcpZr9W7r3F4flQD5LH67/cp+VAPksfrv8Acqh6aVzf1K4+LyRNf2Vg35P6pfuL4/KgHyWP13+5XY2DpKWu4XJuNdrQ7bY6+HlKXutCD6Sd0HTxGvqrO2lKysTuE89LyRpU6D4PKLiqWT5qUs14tryN0xJcedGblRXm32HUhSHG1BSVjvBHOv61kLANqF7wGSExnPKrcpWrsJ1XmHvKT8FXiPaDWm8MzyyZ1AEm1SR1qAC9Fc0DrJ8R3eI4Gpu0voV1lulyPluP9FbrCpOf4qXCS+q4fIkVKUruKuKUpQClKUApSlAKUpQClKUApSlAKVx58+Ja4jkydJZjR2hvLddWEpSPEmqQz7pAqd6y34j+bTxSq4Op84/8NB5fOV9HbUlh2E3N/PRoR2cXwXf9s5bq8pW8c6j7uJZ+a7RrDg0cm4SOslqGrcNnRTq/Ej4I8T9tZ0zrapfs5cUy+75HbddUwmVHdPis/DPr4eFdFbbXecxu/UQ2pFynyFby1FRUontUtR5DxJqz49jw7Y+yiZkTrN9yXdC2re2QW2D2E68vnK9iavlphlnhDistbXe5Lf3LdFdb/grta7r3ue3Qprf98X1I6LCtj8y8Rfw1kcj8CWNtPWKdeIS44nvAPvR6R9gNdrf9rttxu3qx/Z1CbhRU6hdwUjz3D8ZIPEn0lce4VB802h3vOZXWXKUERknVqI0rRpv2fCPiePqqNaj4w+mpeGGVLqSq4g8+UF+FdvxPt2dRxyuo0VoWyy5y4v0R/WTJfmSHJMl5x991W8txxRUpZ7yTxNGGHZTyGGG1uuuKCUIQkqUonkABzNdtieIXfM7iINojF1Q0LjpOjbKe9Suz1cz2Cr/xzEcY2SQ0yHlJn3txPF0gb/qQPgJ8eZ8eVYxfHrfDY6L2z4RX15IWWH1bp57o8yL4FsPjwGE3vNlNoQgb6YCleanxdPb80e3XlUnyHOlyG/ILMnySGlO5vpG6pSR2JHwU/b6q6e+5FOv7+/JcCWknzGUHzEftPia+WHGp2QPbsdG6yk6LfV7xP7T4CvleI4ncX9TWV5di4Ls+8y321pTt46NNerOujx3ZbyGWGluurOiUIGpJqwsa2etRdyVdwl54cUsc0I+d8Y/Z667+w41Ax9ndjI33lDz3l++V+weArtqjzpPgAAAA0A7K+0pQCqk6UdznWnZDPlW6ZJhyEyYwDsd1TawC4NRqkg1bdQPbZs/uG0zAZWOWyTFjSXnmXEuSSoIAQvU+9BP2UBgcZ/l5I/wqv39IPfeq/NpWS3yL0YsAuMe83Jma/KAdktylpdcG69wUoHU8hzPYK6wdCjNQf3QY5+m9/wC3Vo5j0f8AIMi2MYtgka52pufZn+tefdU51Sxo4NE6J1+GOYHI0BkX8f8AL/lVfv6Qe+9Xons7edk4BjTz7i3XXLXFWtxaipSlFpJJJPEnxrKv5FGa/KDHf03v/brWuJWh6wYtZ7RIcbcegQmIzi29d1SkICSRrx01FAdtSlKA6294/Bv0fqpTfngeY6ngtHqPd4VWOQYtOx9wl1PWxidEPoHA+B7jVwV+XWm321NuoStChopKhqCPEUBSlqvU2yyQ/DeLavhJPFKx3EVPbZMxjNloVcbRbnbihO7uSmEOKI9BRHEeHZXXZNs9U3vSrMkqTzVGJ4j5h7fUag4C2HQdVNuIV6lJI/7GsNJ7Gb06k6b0oPJ9R3mc3ux4HJ3Z2zC3vQlq0amtNs9WvwPmearwPs1qJ+7Lg3+7a3/oM/cqxLRmUW5xFWjJmWpUZ5PVqdcSClQ7lj+3/wCarraPsHet6HLxiO9Mgkb6oQO+42O9B+Gnw5+uoq7pV6fv0smuWSz+Rfujt9hV1lb36lCfB6c9F/q2Py7Nx+vdlwb/AHbW/wDQZ+5T3ZcG/wB21v8A0GfuVTSkKSopUCCOBB5ivmlRPt1Xq8F6H0L+1cP5S/8Ac/3Fy+7Jgv8Au2t/6DP3K5EHbriVrkJkwMBjxH0ggOsFpCgDzGoRrVJU0or+stqy8F6GJdEsOkspKTX+8/3GncS6QGPZFcRAnR3LOtwgNOPuBTaj3FQA3T6+HjVoggjUcRWEaszZttrueH9Vbrr1lxs44BJVq7HHoE8x6J9hFd9rirz0a3iVHH+gMVHXYZw3xb39jfyfjwNRUrrrDkNrye3N3G0zGpUdfwkHik9yhzSfA12NTiaazR8uqU505OE1k1vT3ilKVk0FKUoBSlKAVUF06U+zez3OXbZUu5CREeWw6EwlEBaFFJ0OvHiDVv15mbQf3e5J/Ksv9cqgPQrZ/tKxvaZa3rjjkxT7TDvUuocQW3G1aajVJ46EcjyPHuNSmvOXY/tQn7KcvYvEffehOaMzogPB9knjp6Q5pPfw5E1uLMdrmO4ps8/HYS25cKQylUFDatDLcUDuIHceevxQFa8qA4e1Da1s/wAFkxLXl60SH30l9EYRfKChIOgWofB1OoHfoa6HDNreyPPcijY/ZbUw5PkhZbS7aUoSd1JUdVEcOANYlyzKbpmmQzb9eJBfmzHC4tXYkcglI7EgaADuFWH0V/37rD8yV+oXXpGtUisoya7zVwi9rRuyJbLZZ0OriQocJBG84pppLYIHarQDl41UeXbetjGPznmn/IrxL3iXfwfAQ/qrt1cICSfUo1TXSg24zsjvszCrHLUzZICyzLW0rQzHk++BPahJ4aciQSdeGlH49i98y2eIFhtUy5yiNS3GaKykd504AeJ0FFVmnpaTz7RoRyyyNfWjpI7FLm+lmRaVWwKOnWS7S2UD1lveP2Vbtlt+FZHb27lZ4NguEN33j8dhpaD4agc/DnXnvlWzLMsIZRIyHHLhb2FndD7jerevdvp1APhrXP2U7Vr5sryJq4255xyC4oCbAKvzclHbw7FAclcwfDUVt7RV+J+LMaqHJG7syzHFdkVhRdLkwIEB6SljSFFB1cUlRGqU6diDxqvHelLshfcU46qU4tXNS7YST7TXUdLC9Q8j2I2W8W54Ow5txjSGV96FMuka9x48R31kfG8fnZVfYNjtqUKmTnksMhat1JUeWp7K8pScnmzZJLYjaLHSc2OOupQtxxlJOm+5albo9egJ+yrUxPKsbyy2CZjNygz4aTukxVDRsnsUngUnwIFYQzXo9bQMDsjl7utrZXAZI652LIS71QJ0BUBxA1PPTSuj2Y7Qbns2y+FfLe+4ltDiUy2UnzZDGo30KHbw107joawZNjz+lRs0tk6TBkz7il6M6tlwCCsgKSSDx9Yrj/lb7Lv9oXL6gus25DsD2l3m/XG5wMSmPQ5kp2Qw51rI321rKkn3/aCKq65W6VaLhJt05lTEuK6th5pRBKFpJCgdOHAg0BuT8rbZd/tC5fUF1P8AANotg2l2h67Y88+7EZfMdanmS2d8JSo8D2aKHGsEYzsYz7MbQ1eLDjcmdAeUpKH0ONgKKToeClA8CDVoxMxyjo8bI38YkQl2vKb1cXX2esUhZjRurbSXhukjeKgUp17lHsGoGmM42yYPs7WWL/fWGpmmohsguv8AHlqhOpT61aVAmumLs2ckdUpu/No/1qoad36Asn7KxOpUy7TiVGRMmSXOJOrjjq1H2lRJPrqYv7DdpUa2m4u4ZeBHCd86M6rA7ygHeH0UBvTDdpGJ7QI6nsbvkS4FACltJJS62PSbVooevTSpLXn1sG2b5Xm+aMO2GZKs7VtcS5KujWqTGGvvR8ZatCAnlz14a16BtIKG0pUtThSACtWmqvE6cKA6/JMit2J2KbfLs/1EGC0XXl6akAdgHaSdAB2k1VjXS02YOuob/CFxRvqCd5cFYSnU8ye6oV0z8+ES02zCYjo62YoTpgB4hpJIbSfWrU/8grI9AeqKFpcSFoUFJUNQQdQRX2ql6Mme/jvsvhNSHS5cLOfwfI3j5xSkfm1e1Gg170muD0l9sr+zPHGbZZXUov11Cg05zMVkcFO6fG1OifHU9lATPOdsmD7O19Tf76w1L01ENkF1/jy1QnUp9atKgTPTE2bOyOqU3fmka6dauGkp+gLJ+ysT/wDrrzP/AM4mzZTnpOOvLUfaVKJ9tTCXsO2kwbabi/hl4TGSneUQzvLSO8oB3h7RQG98O2iYrn8VUnGr1FuCUAFxtBKXW/nIVopPtFdTtJz7CtnCIkzKmkp8vWpDS0Q+uUopAJ10HcRWPOj3s3yzM8zYn2KdLssW2uBUq6tcC1/Bp14KWocN06jTioacDb/TdBTY8UBJJ8pk8TzPmIoCV/lM7Gf4T+ilfsrksdKzZPFaDUebNabTyQi3LAHsFYwxDDL7nd4TZ8eg+WzlNqdDXWIR5qeZ1UQO3vqc/kwbWvkofrsf79Aaiuu1HZIjFoWbXC3RnYF1kuMNyF2kLcccTrvbw01+CeJrj4btP2NZ3kMbH7JaYbs+SFltLlnCEndSVHUlOg4A1R+1bEr1hPR4w6yX+H5FcGbxJUtnrEr3QoOKTxSSOR76jfRX/fusPzJP6hdaauPI6FeV0slUfizbUrEsShRnpL2OWcNsoU4oiC2ToBqezwqnvd+2C/7Mj/0GPu1d+R/ufuf8Ue/qKry+PP2U1cOSM+23H5kvFnpTBsmET7HHviLHZG7fIjJlpeehtthLSkhQUrUebwPHXlVV5Dt42FWGUuM1a4d2Wg6KVb7U2tGvgtW6D6xqKq/pEZ5cY2C4FhcR9bMN6wxJ0wIOnXkoCUJV6I3VHTtJHcKqPZ5s1yHafeHLVjzDLjrLXXOuPuhtDSNQNSefMgaAE01cOSHttx+ZLxZrfEOknsbMgtw0HHFv6BSnrcGkq7t5Te8Paaue13a33yC3Ptc6NOiOjVD8dwOIV6iOFef2bdH7aFgUVc65WUyILY1XLgrD7aB3q085I8SAKv3odbPLhZrDMy+e9Jaaug6qHE3yG1NpPF5SORJI0Se4H41bJJbEeE5ym9KbzfWaP5VXb/SE2XR3lsuZlbwttRSoBLhGoOh4hOlfjpAZ57n+zG6TmXdyfMT5DD0OhDrgI3h81O8r2CvPTePeayanqPabtBvtsi3O2yW5UKW2l5l5s+atBGoIrl1nTobZ9+F8UnYhLe1k2hfXxgo8THcPED5q9f0xWi6AUpSgFeZm0H93uSfyrL/XKr0zrzM2hfu9yT+VZf65VAdfOsVwttut1ykxloh3JtbkV7ml0IWUKAPeFDQjxHeK/Mi93KXaolpfnSHIENbjkeMpZKGlL03ykdmugrWuzPZjb9qvRitVllbjUtDkp2FLI1Md4POaH5p5KHaD3gVn3C9jGRZTtJXhD8ZyFIhukXF0p1EVpJ85fcdQRu/G3h2UBD12C4tWJq+uRlItz0hUVp5XAOOJSFKA79ARqfEVOejzOXa9p0We0B1kWBcH0696Yjqh9oq3ulxjltxLAMLsdojJjQYT7zTTY56dWnUk9qidST2kk1VnRijNTdsdoivp3mn48xpY70qjOA/YTQFXPOrfeW66tS3FqKlKJ1KieJNegHRyw+3YrsosjsNpvym6x0T5bwHnOrWNQCe5KSEgeB7zWFs0xabhWVXPH56FIfgPqa1I03080rHgpOhHrrQHR+6TdpxPHo+J5l17MaHqmHcGmy4Etk69W4kedwJOhAPDgQNNaA1ZdrRBvtsk2u5RWpUKU2WnmXBqlaTzBrzQzCzN47ll5szLhcbgTn4yFk6lSULKQfoFbB2g9LjDLNZnk4nIcvl2cQUs6MLbYaURwUsrAJA56AHXlqOdYtlSn7hMelSXFPSH3FOOLVxK1KOpJ8SSaAuy83J64dEiytPKKhDyNUdsnsTuOrA/6zVV4Fk6MMzKz5EuKqWm3SkSCyle4XN3s10On0Ve+1HDX8G6K+L2ya2pqa7dW5clCuBQt1t5W6fEJKQfEVQuE4yvM8rtmPNyBGcuL4jodUneCFHXQkd2umtAXXtN6Wzub4hOxy2YwLcLg31L0h+V1xS2SNQlISOJ5ak8O6qNxjHLjl2QQbHa2VPTJzwZbSBrprzUe4AaknsANfxvlkn45eJdoukdcabDdUy80rmlQPH1juPaNDWteh5NwqZYZTEC1R4mVxRpNeWordkMk+atBV71PIKSnhqATzFAaGtsJFut8WGg7yY7SGgT2hKQP7K829pv74+U/wAry/1yq9La80dpv74+VfyvL/XKoDZvRQ/eVtX8YlfrlVmrpVXN64babwy4TuQmo8ZoHsT1SVn/AKlqPtrSvRP/AHlbV/GJX65VUV0xcQkWnaIxkSWyYl5jI/OAcA80AhSf0dw+091ASDoWYdbp8++ZRLaQ9LgdXFibw16krCitY7joAAe4q76sfb5t9umyG+Wy32+zQZ6JkVT6lyHFpKSFlOg3fVWcuj7tnTsjyKT+EGXZFluaUIlJa4raUkndcSDz03lAjtB7wKvHaXlXR+2kpi33IslekuxWC00zEU8h0pJ3t3q93nqe3SgIFE6Zl4gdd5Jhdgjde6p53qVLR1jh5rVpzUdBqTxq6thG26ZtVtd+uF3gQbW1alN+cy4ojdUlalKVvctAmsP5PJssu+y3cdgyINqK9IzEh3rHQkDTVSu889OzXTjprVsWG6yNnXRwurwUWZ+azzEjdivJGk6OLHgSVo/5qAr7anmzu0PPbvkKyrqZL5EdKvgMJ81sfogE+JNS/Pdi7mJ7HsSzANqEucpRuCePmJd89jh2aJBB8VCqlBOutTC+bXc6ySzO2W7ZJNmW50JSuM5u7hCSCnkOwgfRQE66KGe/iltKbtMl3cg35AhqBPAPA6tK+nVP/PXE6Vt2euW2e6sOEluAzHjNA9ieqCz/ANS1GqkiyXoclqTHcU08ysONuJOhQoHUEeIIq0Nu61ZTIsG0VhseT5Jb2xIUkcG5jA6p5Hh71JHeDQFn9CvDrdKcveVyWkPTYq0Q4pUNepCklS1DuJG6Ne7Xvqd7eukFdtkWTQLRAssCc3KhCUpx9xaVJUXFp0G72eaPprPfR721p2SX2U1cmHpFkuQQJIa4rZWnXdcSDz4EgjtHq0Nz7Tcr6Pe0VcfIsgyGVMkR4wYaYhl5Dqk7xVu7m6NDqo8SQPGgIRE6Zl5t6XEQ8LsEZLrinlhlTiAtajqpR05knmeZqO7Y9rM/a9gdoutwt0WAuHdH4yUR1KUFAstq1O921U9/kWuXepb1khPQbapw+TR3nesWhHZvK7T2n11OcjxqRYdh2KzZLSm13i7TJjYUNCWg20hJ08d1RHgRQEMxfLL3hd1F1x+4O2+clCmw82Ek7quY4gjsqZflF7VT/plO/m2vuVxNikHCrhm7bOfOR27J5M6VKfeW0nrNBu+ckg99aB/FXosH/PbR/Scn71Add0p5b9w2N4LNlOl6RIWy664rTVa1RdVHh3k61VfRX/fusPzJP6hdWv0mp9gyrY/Z5eHT41xtVluTcRxUZZWlkdQUpBJ48PNHtFUBsgzhjZ1tEs+SSmFvxYrikvob991a0FCinvICtQO3SgPRDI/8gXL+KPf1DXl8efsrb+fdKTZ8xhk42O6qutzlRltR4qI7iClakkAuFSQABrqRrqdOFYhSkrUEpBJPAADiaA1Dtt2R3jLtmuEZbYIjk5+3WKLHlxmk7zimeqSpK0gcVbpKgQOOhB7DWcLDkV7xC6JuFluMy2TmtUdbHWUK07UnvHDiDwrYO0fbj7h+J4njcSLGn5A3BiCVHdUQlhlDaUq3iOIUoghPdoSewFBybYRt3ih69RLXAvDifzqJihElBXg6kpDg7uJ8QKAqfEOmJmtnU2zkMOBf4w0C1qR1D5HzkjdPtTWpdl+0rG9peOouGOr6pEfRp+GtIQ5EVpwSUjhppyI4HTwIGItuOF4hg+WIt+HX8XeItkOOp61LxjL1PmFxPBXDQ947a77ozZmrB8lyK7PLJgRrHIkyGidAtSFI6sesrUEj59Ad30wc8/GDOo+MxXd6JY29HADwVIcAKv0U7g8DvVDce2Pyr3sZv+epS51sCU2GGxyWwj/Hq07dCtB19BVV/d7pLvd1l3Oc4XZcx5b7yz8JalFRP0mpbattOe2TGBi9vvfU2YMuMeSeSMqSUL13wSUEnXeVrqe2gPuxXO1bOto9pvTjhRDLnk00dhYX5qifVwV60ivRhCkrSFJUFJI1BHIivK7ka350aM8/HjZdATId6yfaT+D5Op4q3AOrV7UFPHvBoC1qUpQCvPLOdmOcy81yCTHw7IHmXblJW24i3uqStJdUQQQniCO2vQ2lAVh0bLRcbHsessC6wZUCW2uSVsSWi24nV5ZGqTxGoINWMzbYUedInsxGG5clKEPvpQAt0I13QpXM6anTXlrXJpQGeumFjN8yWxY41ZLPcLotmU8pxMOOp0oBQnQkJB0qqujXgOW2LbDZZ11xi9QYjaJIW/JhONtp1YWBqojQakge2ttUoCpduewG3bWoqJ8R5u3ZDGRuNSlJ1Q8jmG3QOOnPRQ4jU8COFZCyjYbtExGQtufi1xdbSdBIhtGQ0od+8jXT26GvRelAeatp2XZxfZCY9vxO9vrVw18jWlI9alAAe01pPYd0VF47cY+SZ15O9LjqDka1tqDiGljkp1XJRB4hI1GuhJPKtL6UoCk+ltY7rf8AZnDiWe2TbjITdWXC1EZU6sJDboKiEgnTUjj41nPYxs+zC27VMXmTcUv0WMzcGluPPQHUIQkHiSop0ArfFKAzp0qdij+VQW8yxyA7Iu8VKWpkaO2VLlM8kqCRxK0cu8p+aKz3g1k2nYBk8HIbRiGSJkxF6lBtr268g8FNq83ilQ4fbzAr0PpQHWYzfE5JYYV2TDmQfKmwtUaY0pt5lXahSVAHUHUePMcDWBtomzrM5mfZLJjYlkDzDt0lONut291SVpLqiCCE6EEdtehlPbQFU9GO03CybIbZCukCVAlIfklTElpTa0guqIJSoA8RUw2h7P7NtLxmRYL00otOee08j/GR3R71xB7xqfAgkHnUmpQGBM/6NGf4TKdMa1vX63Akol25BcJT6TY85J7+BHiagDWH5K+/5O1YLu49rp1aYbhVr6t2vTqmnr+mgMTbKuijlGTz2JuXR3bDZ0qCltOaCU+PipR8DXlqrQjsBr89IaxZTkucJtWP4bfRj2Px0W23oj250tbqffqTonQgnhr2hINbbpQGUujBsJZlM3i9Z3i5UN5MWJEusQj0lubix80A/Oq+PcV2b/IfHvqSP2VNaUBhjb5sRvNg2iy/xVxi4SbNNbRKYTb4a3G2CeC2/NBA0UCQO5QqXbAsGn5RjGQbN86xm9QrbIIuMCXIhuNeTPjRCihSk6BWhSQO0BQPOtc0oDBOfdGLP8Mluqg21zILcCS3KtyCtenpNe+SfVqPGoCzgGXyXxHZxa+uOk6dWmA6Tr6t2vTSvmnifpoDGeybol5BfJ7FyzhlVotLagswyoeUyR8Ugf4tJ7SfO7gOYn/S5w663bHsUgY1YZs1qE68jqbfFU4GEBtASNEg7o4aD1Vo6lAea3uVZ8P9Csk/o177tPcrz/5F5J/Rz33a9KfppQGdejbs4fnbIckxfMrJPhMXG4LCmZbKmXCktN6LTvDXUKGoPemqW2h9GHO8NnPKtlteyC16ktSYKN9zd9NoecD6gR41vOlAeaMTZtm0+QI0bEr+46TpuiA7w9eqeFaD2E9Fm52+9RMnzppuOmIsPRrXvBa1uDilTpGoAB0O7qSSOOgGh1X9NKAzHty6LN3ye9z8rxW5rnTJiy6/Anu6KJ7mnDw000ASrTQDgeys1XzZ5l+NSFMXfG7tDWk6auRV7p9SgCk+w16Y00oDzPsGznMMokojWfG7rMWo6aojqCE+tZASkeJIqyM22S37ZjhUawtwJlyv1+WmRcVQY63mosZs6tsb6RoSpZ3lf8NOnDid0aU+mgMJdH7YzNyzaEwjJ7BNbs0JlcmQiXHW0h4gbqEakDXVSgdO5JrVf5P2y75F2v6F/eqwqUBjbpO7DmsbutpumF4+8m3y2lMPxoLK3A06g6hRA1I3kq/6K+dFCZkeG7QHLXcbLdo1svTPUrW7EcSht5Gqm1EkaD4Sf+YVsqmnr+mgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKAUpSgFNaUoBSlKAUpSgGtKUoBSlKAUpSgFKUoBSlKAUpSgFKUoBSlKA//2Q==';   // MortgageUSA logo, JPEG 360x167
+  const HW = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584], HBW = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];   // Helvetica / Helvetica-Bold widths, chars 32-126
+  function pitchPdf(leadName) {
+    const ps = byId('vl-pitch');
+    const fv = (k) => ps ? String((ps.querySelector(`[data-k="${k}"]`) || {}).value || '').trim() : '';
+    const sel = (g) => ps ? [...ps.querySelectorAll(`[data-g="${g}"] .on`)].map((x) => x.textContent.trim()) : [];
+    const vv = (id) => (byId(id) ? String(byId(id).value || '').trim() : '');
+    const a = getAddress(), c = a.missing.length ? null : cache[a.full], zm = c && siteState(c, 'zillow').model;
+    const est = zm && isNum(zm.estimate) ? zm.estimate : null, loan = parseMoney(byLabel(/^Loan\s*Amount/i));
+    const extra = { zest: est ? money(est) : '', loan: loan ? money(loan) : '', borrower: fv('borrower') || [vv('first_name'), vv('last_name')].filter(Boolean).join(' '), ssn: '' };
+    const val = (k) => (k in extra ? extra[k] : fv(k));   // the SSN is never put in the PDF
+    const ag = agentInfo(), name = val('borrower');
+
+    // what goes on the sheet (same sections, order and boxes as the Vici pitch sheet)
+    const F = (k, l, s = 1, n = 0) => ({ k, l, s, n }), C = (g, l, o, s = 1) => ({ g, l, o, s }), R = (c, ...i) => ({ c, i }), S = (sub) => ({ sub });
+    const YN = ['Yes', 'No'];
+    const job = (p) => [S('EMPLOYMENT & INCOME'), R(3, F(p + 'emp', 'Employer'), F(p + 'title1', 'Position / title'), F(p + 'yrs', 'Years')),
+      R(3, F(p + 'income', 'Income'), C(p + 'inc', 'Paid on', ['W-2', '1099']), F(p + 'prev', 'Previous employer')),
+      S('OTHER INCOME'), R(4, F(p + 'ssi', 'SSI'), F(p + 'pension', 'Pension'), F(p + 'dis', 'Disability'), F(p + 'ira', 'IRA')), R(1, F(p + 'addl', 'Additional income'))];
+    const cb = ps && ps.querySelector('.cob'), cobOn = cb && !cb.hidden;
+    const secs = [
+      [1, 'GOALS & NOTES', [R(2, F('goals', 'What does the borrower want?', 1, 3), F('notes', 'Notes', 1, 3))]],
+      [2, 'BORROWER', [R(3, F('borrower', 'Full name', 2), F('dob', 'Date of birth')), R(3, F('credit', 'Credit score'), F('email', 'Email'), F('phone', 'Home phone')),
+        R(3, F('cell', 'Cell'), F('work', 'Work'), C('married', 'Married?', YN)), R(3, C('vet', 'Veteran?', YN), F('disab', '% disability')),
+        S('PRESENT ADDRESS'), R(4, F('addr', 'Street', 4)), R(4, F('city', 'City', 2), F('state', 'State'), F('zip', 'ZIP')), R(4, F('county', 'County', 2)), ...job('')]],
+      cobOn && [3, 'CO-BORROWER', [R(3, F('cob', 'Full name', 2), F('cdob', 'Date of birth')), R(3, F('ccredit', 'Credit score'), C('cmarried', 'Married?', YN)),
+        S('EMPLOYER ADDRESS'), R(1, F('cempaddr', 'Street, city, state')), ...job('c')]],
+      [4, 'PROPERTY', [R(1, C('occ', 'Occupancy', ['Primary', 'Second home', 'Investment'])), R(1, C('ptype', 'Property type', ['Condo', 'SFR', 'Townhouse', 'Manufactured', 'Mobile', '2-4 Unit'])),
+        R(3, F('pyear', 'Purchase year'), F('pprice', 'Purchase price'), F('refi', 'Last refi')), R(3, F('value', 'Client value'), F('zest', 'Zillow estimate'), F('loan', 'Loan amount'))]],
+      [5, 'CURRENT MORTGAGE', [R(3, F('holder', '1st mortgage holder', 2), F('balance', 'Balance')), R(3, F('rate', 'Rate'), F('term', 'Term'), F('payment', 'Payment')),
+        R(1, C('rtype', 'Loan', ['Fixed', 'Adjustable', 'Interest only'])), R(1, C('prog', 'Program', ['FHA', 'Conv', 'VA', 'Fannie', 'Freddie'])),
+        R(3, C('escrow', 'Escrowed?', YN), F('taxes', 'Taxes'), F('ins', 'Insurance')), R(3, F('pmi', 'PMI'), F('hoa', 'HOA'))]],
+      [6, 'ASSETS', [R(3, F('checking', 'Checking / savings'), F('retire', 'Retirement'), F('broker', 'Brokerage'))]],
+      [7, 'OTHER OFFER RECEIVED', [R(1, F('offer', '', 1, 2))]],
+      [8, 'PITCH', [R(1, C('pitch', 'Program', ['CONV', 'FHA', 'VA'])), R(1, F('pitch', 'Program, rate, payment, cash out, savings', 1, 4))], 1]
+    ].filter(Boolean);
+
+    // text helpers (WinAnsi)
+    const asc = (x) => String(x).replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/•/g, '-').replace(/…/g, '...').replace(/\r/g, '').replace(/[^\n\x20-\x7e\xa0-\xff]/g, '?');
+    const esc = (x) => asc(x).replace(/\n/g, ' ').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+    const tw = (s, size, bold) => { let w = 0; for (const ch of asc(s)) { const k = ch.charCodeAt(0); w += k >= 32 && k <= 126 ? (bold ? HBW : HW)[k - 32] : k === 0xb7 ? 278 : 556; } return w * size / 1000; };
+    const fit = (s, width, size, bold) => { s = asc(s).replace(/\n/g, ' '); while (s && tw(s, size, bold) > width) s = s.slice(0, -1); return s; };
+    const wrap = (s, width, size) => { const out = []; asc(s).split('\n').forEach((para) => { let line = '';
+      para.split(/\s+/).filter(Boolean).forEach((w) => { const t = line ? line + ' ' + w : w; if (tw(t, size) <= width) line = t; else { if (line) out.push(line); line = fit(w, width, size); } });
+      out.push(line); }); while (out.length > 1 && !out[out.length - 1]) out.pop(); return out; };
+    const rgb = (h) => [1, 3, 5].map((i) => (parseInt(h.substr(i, 2), 16) / 255).toFixed(3)).join(' ');
+    const T = (x, y, s, size, bold, col = '#1d2530', extra2 = '') => `BT /F${bold ? 2 : 1} ${size} Tf ${rgb(col)} rg ${extra2}${x.toFixed(2)} ${y.toFixed(2)} Td (${esc(s)}) Tj ET`;
+    const rr = (x, y, w, h, r) => { const k = 0.5523 * r; return `${x + r} ${y} m ${x + w - r} ${y} l ${x + w - r + k} ${y} ${x + w} ${y + r - k} ${x + w} ${y + r} c ${x + w} ${y + h - r} l ${x + w} ${y + h - r + k} ${x + w - r + k} ${y + h} ${x + w - r} ${y + h} c ${x + r} ${y + h} l ${x + r - k} ${y + h} ${x} ${y + h - r + k} ${x} ${y + h - r} c ${x} ${y + r} l ${x} ${y + r - k} ${x + r - k} ${y} ${x + r} ${y} c h`; };
+
+    // layout
+    const W = 612, H = 792, M = 36, CW = W - 2 * M, PAD = 9, GAP = 8, IW = CW - 2 * PAD, LBL = 9, FH = 16, LH = 11, FS = 9;
+    const rowLayout = (row) => {
+      if (row.sub) return { h: 17, sub: row.sub };
+      const colW = (IW - GAP * (row.c - 1)) / row.c; let x = 0, hasL = false, mh = 0;
+      const items = row.i.map((it) => { const w = colW * it.s + GAP * (it.s - 1); let h, lines;
+        if (it.g) h = 12; else if (it.n) { lines = wrap(val(it.k), w - 6, FS); h = Math.min(Math.max(it.n, lines.length), 14) * LH + 6; } else h = FH;
+        if (it.l) hasL = true; mh = Math.max(mh, h); const o = { ...it, x, w, h, lines }; x += w + GAP; return o; });
+      return { h: (hasL ? LBL : 0) + mh + 6, hasL, items };
+    };
+    const laid = secs.map(([n, title, rows, red]) => { const rs = rows.map(rowLayout); return { n, title, red, rs, h: PAD + 18 + rs.reduce((t, r) => t + r.h, 0) + PAD - 6 }; });
+    const TOP1 = H - 118, TOPN = H - 90, BOT = 50;
+    const pages = [[]]; let y = TOP1;
+    laid.forEach((s) => { if (y - s.h < BOT && pages[pages.length - 1].length) { pages.push([]); y = TOPN; } pages[pages.length - 1].push({ s, y }); y -= s.h + 9; });
+
+    // objects
+    const O = ['', '']; const add = (s) => { O.push(s); return O.length; };
+    const stream = (dict, body) => add(`<< ${dict} /Length ${body.length} >>\nstream\n${body}\nendstream`);
+    const F1 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    const F2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    const ZD = add('<< /Type /Font /Subtype /Type1 /BaseFont /ZapfDingbats >>');
+    const logo = atob(PDF_LOGO);
+    const IM = stream('/Type /XObject /Subtype /Image /Width 360 /Height 167 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode', logo);
+    const CK_ON = stream(`/Type /XObject /Subtype /Form /BBox [0 0 9 9] /Resources << /Font << /ZaDb ${ZD} 0 R >> >>`, `${rgb('#1652e6')} rg 0 0 9 9 re f 1 G 1.3 w 1 J 1 j 2 4.7 m 3.8 2.7 l 7.1 6.6 l S`);
+    const CK_OFF = stream('/Type /XObject /Subtype /Form /BBox [0 0 9 9]', `1 g ${rgb('#7b8796')} RG 0.8 w 0.4 0.4 8.2 8.2 re B`);
+    const fields = [], pageRefs = [], seen = {};
+    const uniq = (n) => { n = n.replace(/[^\w-]/g, ''); let u = n, i = 2; while (seen[u]) u = n + '_' + i++; seen[u] = 1; return u; };
+    const DA = `/Helv ${FS} Tf ${rgb('#1d2530')} rg`;
+    const stamp = new Date().toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+    pages.forEach((pg, pi) => {
+      const ops = [], annots = [];
+      // header: blue band, logo, title, who / when
+      ops.push(`${rgb('#1652e6')} rg 0 ${H - 12} ${W} 12 re f`);
+      ops.push(`q 95 0 0 44.1 ${M} ${H - 70} cm /Im1 Do Q`);
+      const tx = M + 106, ttl = 'Pitch sheet', tW = tw(ttl, 20, true);
+      ops.push(T(tx, H - 60, ttl, 20, true));
+      if (name) ops.push(T(tx + tW, H - 60, fit('  ·  ' + name, W - M - 150 - tx - tW, 20), 20, false, '#5b6675'));
+      const meta = pi ? [['MortgageUSA', true], ['continued', false]] : [['MortgageUSA', true], [ag.label ? 'Agent: ' + ag.label : '', false], [leadName ? 'For: ' + leadName : '', false], [stamp, false]].filter((m) => m[0]);
+      meta.forEach(([s, b], i) => ops.push(T(W - M - tw(s, 8.5, b), H - 34 - i * 11, s, 8.5, b, b ? '#1d2530' : '#5b6675')));
+      ops.push(`${rgb('#1d2530')} RG 1.5 w ${M} ${H - 78} m ${W - M} ${H - 78} l S`);
+      if (!pi) {
+        const cl = wrap('CONFIDENTIAL - This document contains private borrower information owned by MTGUSA, LLC dba MortgageUSA. For internal use only; do not copy, forward or share outside MortgageUSA.', CW - 16, 7.5);
+        const bh = cl.length * 9.5 + 7;
+        ops.push(`${rgb('#fdf0f0')} rg ${rgb('#f1c4c5')} RG 0.7 w ${rr(M, H - 86 - bh, CW, bh, 3)} B`);
+        cl.forEach((l, i) => ops.push(T(M + 8, H - 86 - 10 - i * 9.5, l, 7.5, i === 0 && false, '#9a1c1f')));
+      }
+      // sections
+      pg.forEach(({ s, y: top }) => {
+        ops.push(`1 g ${rgb(s.red ? '#e3262d' : '#cfd6df')} RG ${s.red ? 1.2 : 0.7} w ${rr(M, top - s.h, CW, s.h, 5)} B`);
+        ops.push(`${rgb(s.red ? '#e3262d' : '#1f2f4d')} rg ${rr(M + PAD, top - PAD - 13, 13, 13, 6.5)} f`);
+        const ns = String(s.n); ops.push(T(M + PAD + 6.5 - tw(ns, 7, true) / 2, top - PAD - 9, ns, 7, true, '#ffffff'));
+        ops.push(T(M + PAD + 19, top - PAD - 9.5, s.title, 8, true, '#4a5563', '0.6 Tc '));
+        ops.push('0 Tc');
+        let cy = top - PAD - 18;
+        s.rs.forEach((r) => {
+          if (r.sub) {
+            ops.push(`${rgb('#cfd6df')} RG 0.6 w [2 2] 0 d ${M + PAD} ${cy - 3} m ${M + CW - PAD} ${cy - 3} l S [] 0 d`);
+            ops.push(T(M + PAD, cy - 12.5, r.sub, 7, true, '#4a5563', '0.4 Tc ')); ops.push('0 Tc');
+            cy -= r.h; return;
+          }
+          r.items.forEach((it) => {
+            const x = M + PAD + it.x;
+            if (it.l) ops.push(T(x, cy - 7, it.l, 6.8, true, '#5b6675'));
+            const fy = cy - (r.hasL ? LBL : 0);
+            if (it.g) {   // checkboxes
+              const on = sel(it.g); let cx = x;
+              it.o.forEach((opt) => {
+                const isOn = on.some((o) => o.toLowerCase() === opt.toLowerCase());
+                const rect = [cx, fy - 10.5, cx + 9, fy - 1.5].map((v) => v.toFixed(2)).join(' ');
+                const ref = add(`<< /Type /Annot /Subtype /Widget /FT /Btn /T (${uniq(it.g + '_' + opt)}) /V /${isOn ? 'Yes' : 'Off'} /AS /${isOn ? 'Yes' : 'Off'} /Rect [${rect}] /F 4 /MK << /CA (4) >> /DA (/ZaDb 0 Tf 1 g) /AP << /N << /Yes ${CK_ON} 0 R /Off ${CK_OFF} 0 R >> >> >>`);
+                annots.push(ref); fields.push(ref);
+                ops.push(T(cx + 12, fy - 9.3, opt, 8.5, false));
+                cx += 12 + tw(opt, 8.5) + 11;
+              });
+            } else {   // a box to type in
+              const v = val(it.k), multi = !!it.n;
+              ops.push(`${rgb(v ? '#f3f7ff' : '#fafbfc')} rg ${rgb('#b9c3cf')} RG 0.6 w ${rr(x, fy - it.h, it.w, it.h, 2.5)} B`);
+              const body = multi ? `/Tx BMC q BT /Helv ${FS} Tf ${rgb('#1d2530')} rg ${(it.lines || []).slice(0, Math.round((it.h - 6) / LH)).map((l, i) => `${i ? '0 -' + LH : '3 ' + (it.h - 11).toFixed(2)} Td (${esc(l)}) Tj`).join(' ')} ET Q EMC`
+                : `/Tx BMC q BT /Helv ${FS} Tf ${rgb('#1d2530')} rg 3 4.8 Td (${esc(fit(v, it.w - 6, FS))}) Tj ET Q EMC`;
+              const ap = stream(`/Type /XObject /Subtype /Form /BBox [0 0 ${it.w.toFixed(2)} ${it.h}] /Resources << /Font << /Helv ${F1} 0 R >> >>`, body);
+              const rect = [x, fy - it.h, x + it.w, fy].map((n2) => n2.toFixed(2)).join(' ');
+              const ref = add(`<< /Type /Annot /Subtype /Widget /FT /Tx /T (${uniq(it.k)}) /TU (${esc(it.l || 'Other offer received')}) /V (${esc(asc(v).replace(/\n/g, '\r'))}) /DA (${DA}) /Rect [${rect}] /F 4 /Ff ${multi ? 4096 : 0} /MK << >> /AP << /N ${ap} 0 R >> >>`);
+              annots.push(ref); fields.push(ref);
+            }
+          });
+          cy -= r.h;
+        });
+      });
+      // footer
+      ops.push(`${rgb('#e3e7ec')} RG 0.6 w ${M} 40 m ${W - M} 40 l S`);
+      ops.push(T(M, 28, 'Confidential  ·  Property of MTGUSA, LLC dba MortgageUSA  ·  SSN never included', 7.5, false, '#8a94a3'));
+      const pn = `Page ${pi + 1} of ${pages.length}`; ops.push(T(W - M - tw(pn, 7.5), 28, pn, 7.5, false, '#8a94a3'));
+      const content = stream('', ops.join('\n'));
+      pageRefs.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${F1} 0 R /F2 ${F2} 0 R >> /XObject << /Im1 ${IM} 0 R >> >> /Contents ${content} 0 R /Annots [${annots.map((r) => r + ' 0 R').join(' ')}] >>`));
     });
-    const pages = []; let cur = [], y = 742;
-    rows.forEach((r) => { const h = r[1] + 4 + r[3]; if (y - h < 54) { pages.push(cur); cur = []; y = 742; } y -= h; cur.push(`BT /${r[0]} ${r[1]} Tf 54 ${y} Td (${esc(r[2])}) Tj ET`); });
-    pages.push(cur);
-    const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
-    const kids = [];
-    pages.forEach((pg) => {
-      const stream = '0.09 0.32 0.9 rg 0 777 612 15 re f 0 0 0 rg\n' + pg.join('\n');
-      objs.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
-      objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${objs.length} 0 R >>`);
-      kids.push(objs.length + ' 0 R');
-    });
-    objs[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.length} >>`;
-    let out = '%PDF-1.4\n'; const offs = [];
-    objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    O[0] = `<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [${fields.map((r) => r + ' 0 R').join(' ')}] /DR << /Font << /Helv ${F1} 0 R /ZaDb ${ZD} 0 R >> >> /DA (/Helv 0 Tf 0 g) >> >>`;
+    O[1] = `<< /Type /Pages /Kids [${pageRefs.map((r) => r + ' 0 R').join(' ')}] /Count ${pageRefs.length} >>`;
+    const info = add(`<< /Title (${esc('Pitch sheet' + (name ? ' - ' + name : ''))}) /Author (${esc(ag.label || 'MortgageUSA')}) /Creator (MortgageUSA Vici) >>`);
+    let out = '%PDF-1.7\n%\xe2\xe3\xcf\xd3\n'; const offs = [];
+    O.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
     const xref = out.length;
-    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('');
-    out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    out += `xref\n0 ${O.length + 1}\n0000000000 65535 f \n` + offs.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+    out += `trailer\n<< /Size ${O.length + 1} /Root 1 0 R /Info ${info} 0 R >>\nstartxref\n${xref}\n%%EOF`;
     return btoa(out);
+  }
+  const pdfFileName = () => { const n = (byId('vl-pitch') && String((byId('vl-pitch').querySelector('[data-k="borrower"]') || {}).value || '').trim()) || [byId('first_name') && byId('first_name').value, byId('last_name') && byId('last_name').value].filter(Boolean).join(' ') || 'Lead';
+    return ('Pitch sheet - ' + n + ' - ' + new Date().toISOString().slice(0, 16).replace('T', ' ').replace(':', 'h')).replace(/[\\/:*?"<>|]/g, '') + '.pdf'; };
+  function downloadPdf(pdf, fileName) {
+    const bin = atob(pdf), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([u8], { type: 'application/pdf' }));
+    const a = document.createElement('a'); a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
   function toast(msg, bad) {
     const t = document.createElement('div');
     t.style.cssText = `position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483600;background:${bad ? '#b42318' : '#137a32'};color:#fff;border-radius:999px;padding:10px 18px;font:600 13.5px "Segoe UI",Arial,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25)`;
     t.textContent = msg; document.documentElement.appendChild(t); setTimeout(() => t.remove(), 6000);
   }
-  const flowUrl = () => { const u = GM_getValue('vpFlowUrl', ''); return /^https:\/\/[^/]+\.(powerplatform\.com|logic\.azure\.com)(:\d+)?\//i.test(u) ? u : ''; };
+  // The flow URL comes from the company's Edge policy (extension: every PC at once), or is pasted in the half-moon menu
+  const policyFlow = () => { try { return GM_getValue('vpPolicyFlowUrl', '') || ''; } catch (e) { return ''; } };
+  const flowUrl = () => { const u = policyFlow() || GM_getValue('vpFlowUrl', ''); return /^https:\/\/[^/]+\.(powerplatform\.com|logic\.azure\.com)(:\d+)?\//i.test(u) ? u : ''; };
   // Send to Team Lead: with the Power Automate flow connected, the PDF + summary go straight to the team lead in Teams
   // (filed in SharePoint). Without it (or if it fails): the PDF downloads and a Teams chat / Outlook email opens.
   function sendLead(email, text, how) {
     const lead = TEAM_LEADS.find((t) => t[1].toLowerCase() === String(email).toLowerCase()) || ['', email];
     const borrower = (text.match(/Borrower: (.+)/) || [, 'Lead'])[1];
-    const fileName = ('Pitch sheet - ' + borrower + ' - ' + new Date().toISOString().slice(0, 16).replace('T', ' ').replace(':', 'h')).replace(/[\\/:*?"<>|]/g, '') + '.pdf';
-    const pdf = pitchPdf(text, lead[0]);
+    const fileName = pdfFileName();
+    const pdf = pitchPdf(lead[0]);
     GM_setValue('vpTL', lead[1]);
     const fallback = (why) => {
-      const a = document.createElement('a'); a.href = 'data:application/pdf;base64,' + pdf; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
+      downloadPdf(pdf, fileName);
       sendVia(how || GM_getValue('vpTLvia', 'teams'), lead[1], text);
       if (why) toast(why + ' The PDF downloaded and ' + ((how || GM_getValue('vpTLvia', 'teams')) === 'outlook' ? 'an Outlook email' : 'a Teams chat') + ' opened instead.', true);
     };
     const url = flowUrl();
     if (!url || how) return fallback('');
-    const agent = (((byId('Header') || {}).textContent || '').match(/Logged in as User\W+([\w.-]+)/i) || [, ''])[1];
-    const html = text.split('\n').map((l) => { const m = l.match(/^([^:]{1,30}):\s*(.*)$/); const e = (x) => String(x).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); return m ? `<b>${e(m[1])}:</b> ${e(m[2])}` : `<b>${e(l)}</b>`; }).join('<br>');
+    const agent = agentInfo().label;
+    const html = (text.split('\n').slice(1).join('\n') || 'Pitch sheet was empty').split('\n').map((l) => { const m = l.match(/^([^:]{1,30}):\s*(.*)$/); const e = (x) => String(x).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); return m ? `<b>${e(m[1])}:</b> ${e(m[2])}` : `<b>${e(l)}</b>`; }).join('<br>');
     GM_xmlhttpRequest({
       method: 'POST', url, timeout: 30000, headers: { 'Content-Type': 'application/json' },
       data: JSON.stringify({ teamLead: lead[1], teamLeadName: lead[0], agent, borrower, fileName, summaryHtml: html, summaryText: text, pdf }),
@@ -3985,25 +4124,7 @@ function readHomesPage(doc) {
     });
   }
 
-  // one-page printable copy; Edge's print window has "Save as PDF"
-  function pitchPDF() {
-    const ps = byId('vl-pitch'); if (!ps) return;
-    const clone = ps.querySelector('.page').cloneNode(true);
-    clone.querySelectorAll('input').forEach((i) => {
-      const v = i.dataset.k === 'ssn' ? (i.value ? '***-**-' + i.value.replace(/\D/g, '').slice(-4) : '') : i.value;
-      const s = document.createElement('div'); s.className = i.className.replace('auto', ''); s.textContent = v; i.replaceWith(s); });
-    clone.querySelectorAll('textarea').forEach((t) => { const d = document.createElement('div'); d.className = 'in'; d.textContent = t.value; t.replaceWith(d); });
-    const win = window.open('', '_blank', 'width=820,height=1000');
-    if (!win) { alert('Allow pop-ups for Vici to save the pitch sheet as a PDF.'); return; }
-    win.document.write(`<!DOCTYPE html><title>Pitch sheet</title><style>${PS_CSS.replace(/#vl-pitch /g, '')}
-      body{margin:0;font:12px "Segoe UI",Arial,sans-serif;color:#111}.page{display:flex;flex-direction:column;gap:8px}
-      .in{display:block;height:auto;min-height:22px;white-space:pre-wrap}.in.auto{background:#fff;border-color:#cdd4dd}
-      .t,.p{border:1px solid #888}.t.on,.p.on{background:#111!important;color:#fff;border-color:#111}
-      .sec{break-inside:avoid}.aside,.cob-off,.cob[hidden]{display:none}
-      @page{size:letter;margin:.45in}@media print{.row{margin:5px 0}}</style><div class="page">${clone.innerHTML}</div>`);
-    win.document.close();
-    setTimeout(() => { try { win.focus(); win.print(); } catch (e) {} }, 300);
-  }
+
 
   // ---------- no page scrollbars when everything fits ----------
   function scrollLock() {
