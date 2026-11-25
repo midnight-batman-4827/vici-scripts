@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      16.0
+// @version      16.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -2697,7 +2697,7 @@ function readHomesPage(doc) {
         #vl-status{visibility:hidden!important}
         /* Transfer - Conf: Vici's panel stays (Vici opens/closes it) but is see-through; our card shows instead */
         #TransferMain{left:${L.card[0]}px!important;top:${L.pitch[1] + L.pitch[3] + 12}px!important;opacity:0!important;pointer-events:none!important}
-        #vl-xfer{width:${L.pitch[0] + L.pitch[2] - L.card[0]}px;background:#fff;border:1px solid #dde2e8;border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,.08);
+        #vl-xfer{width:${L.card[2]}px;background:#fff;border:1px solid #dde2e8;border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,.08);
           padding:10px 14px 12px;font:12px "Segoe UI",Arial,sans-serif;color:#1d2530;box-sizing:border-box;display:none}
         #vl-xfer.open{display:block}
         #vl-xfer *{box-sizing:border-box}
@@ -3155,6 +3155,8 @@ function readHomesPage(doc) {
     if (a && on !== hkOn()) a.dispatchEvent(new MouseEvent(on ? 'mouseover' : 'mouseout', { bubbles: true }));
   };
   const hkWanted = () => !!GM_getValue('vpHotKeysOn', false);
+  let stackBottom = 0;
+  const panelH = () => (stackBottom || L.pitch[1] + L.pitch[3]) - L.pitch[1];
   // ---------- Other agents + Hot Keys: one card under "Property at a glance", always shown ----------
   // Agents come from Vici's own Agents View list (kept open but hidden); Hot Keys drive Vici's own hot keys.
   const AG_COL = { '#ADD8E6': 'r', '#D8BFD8': 'c', '#F0E68C': 'p' }, AG_LBL = { r: 'Ready', c: 'On a call', p: 'Paused', o: 'Other' };
@@ -3201,6 +3203,7 @@ function readHomesPage(doc) {
     const ag = t.querySelector('.ag');
     if (ag.dataset.k !== agHTML + sumHTML) { ag.dataset.k = agHTML + sumHTML; ag.querySelector('.list').innerHTML = agHTML; ag.querySelector('.sum').innerHTML = sumHTML; }
     t.style.display = openKey ? 'none' : 'flex';
+    stackBottom = Math.max(L.pitch[1] + L.pitch[3], top + t.offsetHeight);   // pitch sheet + script end here
   }
 
   // ---------- Script panel beside the pitch sheet (shows Vici's SCRIPT / SCRIPT 2, filled in for the lead) ----------
@@ -3220,6 +3223,7 @@ function readHomesPage(doc) {
     if (p.classList.contains('big')) { const tb = byId('vprop-tabbar'), z = Z(), t = Math.round((tb ? tb.getBoundingClientRect().bottom : 48) / z + 4);
       Object.assign(p.style, { top: t + 'px', width: Math.floor(window.innerWidth / z) + 'px', height: Math.floor(window.innerHeight / z - t) + 'px' }); }
     p.style.display = openKey ? 'none' : 'flex';
+    if (!p.classList.contains('big')) { const sh = panelH() + 'px'; if (p.style.height !== sh) p.style.height = sh; }
     const src = byId(scriptTab), html = src && src.textContent.trim() ? src.innerHTML : '';
     if (html !== scriptLast) {
       scriptLast = html;
@@ -3233,7 +3237,7 @@ function readHomesPage(doc) {
     if (on && openKey) closeScreen();
     p.classList.toggle('big', on);
     p.querySelector('[data-big]').textContent = on ? '✕ Back to the call' : 'Full screen';
-    if (!on) Object.assign(p.style, { top: L.script[1] + 'px', width: L.script[2] + 'px', height: L.script[3] + 'px' });
+    if (!on) Object.assign(p.style, { top: L.script[1] + 'px', width: L.script[2] + 'px', height: panelH() + 'px' });
     document.documentElement.classList.toggle('vl-big', on || !!openKey);
     scriptPanel();
   }
@@ -3482,7 +3486,8 @@ function readHomesPage(doc) {
       : /multi|duplex|triplex|fourplex|2-4|2 to 4/.test(t) ? '2-4 Unit' : /single|sfr|house/.test(t) ? 'SFR' : ''; };
   function pitchSheet() {
     const [x, y, w, h] = L.pitch;
-    const ps = box('vl-pitch', x, y, `width:${w}px;height:${h}px;z-index:7`);
+    const ps = byId('vl-pitch') || box('vl-pitch', x, y, `width:${w}px;height:${h}px;z-index:7`);
+    const psH = panelH() + 'px'; if (ps.style.height !== psH) ps.style.height = psH;   // bottom lines up with Other Agents
     if (!ps.childElementCount) {
       { const st = byId('vl-pitch-style') || document.createElement('style'); st.id = 'vl-pitch-style'; st.textContent = PS_CSS; document.head.appendChild(st); }
       ps.innerHTML = pitchHTML();
