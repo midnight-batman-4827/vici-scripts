@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.2
+// @version      15.3
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -406,7 +406,7 @@ function readHomesPage(doc) {
     }
 
     document.documentElement.classList.add('mu-adm');
-    const st = document.createElement('style'); st.id = 'mu-adm-style'; st.textContent = adminCSS();
+    const st = document.createElement('style'); st.id = 'mu-adm-style'; st.textContent = adminCSS() + dashCSS();
     document.head.appendChild(st);
 
     // ---------- frame: sidebar, top bar, link row, footer ----------
@@ -429,6 +429,9 @@ function readHomesPage(doc) {
       [...bt.rows].filter((r) => r !== bar && r !== tabs && !r.querySelector('a,input,select,textarea,table,img') && !r.textContent.replace(/ /g, ' ').trim()).forEach((r) => r.classList.add('mu-gone'));
     }
     const inPage = (e) => !e.closest('.mu-side,tr.mu-topbar,tr.mu-tabs');
+    const isDash = !!(!page && [...main.querySelectorAll('table')].find((t) => !t.querySelector('table') && /Agents Logged In/.test(t.textContent)));
+    dashButton(side, isDash);
+    if (isDash) { dashboard(main); return true; }
     const bigIcons = () => [...main.querySelectorAll('img')].filter((i) => inPage(i) && (i.getAttribute('width') | 0) >= 30 && !i.closest('.mu-grid4,.mu-card3,.mu-form,.mu-page'));
 
     // ---------- Reports home ----------
@@ -497,6 +500,227 @@ function readHomesPage(doc) {
     bigIcons().filter((i) => !i.closest('form')).forEach((i) => i.classList.add('mu-gone'));
     return true;
   }
+
+  // "Dashboard" at the top of the sidebar (Vici's dashboard is admin.php with nothing after it)
+  function dashButton(side, on) {
+    const rep = [...side.querySelectorAll('td.head_style,td.head_style_selected')].find((td) => /^\s*Reports\s*$/.test(td.textContent));
+    if (!rep || side.querySelector('.mu-dashbtn')) return;
+    const tr = rep.closest('tr'), nt = tr.cloneNode(true), td = nt.cells[0];
+    td.className = (on ? 'head_style_selected' : 'head_style') + ' mu-dashbtn';
+    if (on) rep.className = 'head_style';
+    const a = td.querySelector('a'); if (!a) return;
+    a.setAttribute('href', 'admin.php'); a.removeAttribute('onclick');
+    const img = a.querySelector('img');
+    if (img) { const sv = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); sv.setAttribute('viewBox', '0 0 24 24'); sv.setAttribute('width', '14'); sv.setAttribute('height', '14');
+      sv.innerHTML = '<path fill="none" stroke="#fff" stroke-width="2" d="M4 13h6V4H4zM14 20h6v-9h-6zM14 4v4h6V4zM4 20h6v-4H4z"/>'; img.replaceWith(sv); }
+    const f = [...a.querySelectorAll('font,b,span')].reverse().find((e) => /Reports/.test(e.textContent) && !e.querySelector('font,b,span'));
+    if (f) f.textContent = ' Dashboard '; else a.appendChild(document.createTextNode(' Dashboard'));
+    tr.parentNode.insertBefore(nt, tr);
+  }
+
+  // Vici's dashboard (the logo / Dashboard button). Built from the numbers Vici put on the page, refreshed every 30s,
+  // plus who's on what (Vici's Real-Time report) and the lists dialed today (Vici's Lists page). Every link is Vici's own.
+  function dashboard(main) {
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+    const num = (x) => { const m = String(x).replace(/,/g, '').match(/\d+/); return m ? +m[0] : null; };
+    const fmt = (x) => String(x).replace(/\d{4,}/g, (d) => Number(d).toLocaleString());
+    const secs = (t) => String(t).trim().split(':').reduce((a, b) => a * 60 + (+b || 0), 0);
+    const card = (title) => { const c = el('div', 'mu-c'), h = el('h3', '', title); c.appendChild(h); return c; };
+    const get = (u, o) => fetch(u, Object.assign({ credentials: 'include' }, o)).then((r) => r.text()).then((h) => new DOMParser().parseFromString(h, 'text/html'));
+    const agentsCard = card('Agents right now'); agentsCard.classList.add('mu-agents'); agentsCard.appendChild(el('div', 'mu-lg', 'Loading…'));
+    const listsCard = card('Lists dialed today'); listsCard.appendChild(el('div', 'mu-lg', 'Loading…'));
+    let d = null, stamp = Date.now(), failed = false, names = null, ticks = 0;
+
+    function build(root, first) {
+      const tbl = (re) => [...root.querySelectorAll('table')].find((t) => !t.querySelector('table') && re.test(t.textContent));
+      const kt = tbl(/Agents Logged In/), st = tbl(/Records/), today = tbl(/Total Stats for Today/), yest = tbl(/Total Stats for Yesterday/);
+      if (!kt) return false;
+      const nd = el('div', 'mu-dash');
+      const hd = el('div', 'mu-dhead'), ttl = el('div', 'mu-ttl2', 'Dashboard ');
+      ttl.appendChild(el('span', '', new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })));
+      hd.appendChild(ttl); hd.appendChild(el('div', 'mu-upd')); nd.appendChild(hd);
+      const qb = el('div', 'mu-quick'); nd.appendChild(qb);
+      [['Real-Time Report', 'realtime_report.php'], ['Load leads', 'admin_listloader_fourth_gen.php'], ['Show lists', 'admin.php?ADD=100'], ['Users', 'admin.php?ADD=0A'], ['Add a user', 'admin.php?ADD=1']]
+        .forEach(([t, u]) => { const a = el('a', '', t); a.href = u; qb.appendChild(a); });
+      // number cards
+      const kp = el('div', 'mu-kpis'); nd.appendChild(kp);
+      const labels = [...kt.rows[0].cells].filter((c) => c.textContent.trim() && !c.querySelector('img')).map((c) => c.textContent.trim());
+      const links = [...kt.querySelectorAll('a')], vals = [...kt.rows[1].cells].map((c) => c.textContent.trim()).filter(Boolean);
+      const by = (re) => num(vals[labels.findIndex((l) => re.test(l))]);
+      const inCalls = by(/In Calls/i), ringing = by(/Ringing/i);
+      const COLORS = ['#2563eb', '#1aa33c', '#7c3aed', '#d97706'];
+      labels.forEach((l, i) => {
+        const a = el('a', 'mu-kpi'); if (links[i] && links[i].getAttribute('href')) a.href = links[i].getAttribute('href');
+        a.style.setProperty('--c', COLORS[i % 4]); a.appendChild(el('i'));
+        const box = el('div'); box.appendChild(el('div', 'k', l)); box.appendChild(el('div', 'v', fmt(vals[i] || '—')));
+        if (/Ringing/i.test(l) && ringing !== null) box.appendChild(el('div', 's', inCalls ? `${(ringing / inCalls).toFixed(1)} per agent on a call` : 'no agents on a call'));
+        a.appendChild(box); kp.appendChild(a);
+      });
+      const row = el('div', 'mu-row2'), left = el('div', 'mu-col2'), right = el('div', 'mu-col2');
+      row.appendChild(left); row.appendChild(right); nd.appendChild(row);
+      left.appendChild(agentsCard);
+      const table = (heads) => { const t = el('table', 'mu-t'), th = el('thead'), tr = el('tr'); heads.forEach((h) => tr.appendChild(el('th', '', h))); th.appendChild(tr); t.appendChild(th); t.appendChild(el('tbody')); return t; };
+      const addRow = (t, r, n) => { const tr = el('tr'); for (let i = 0; i < n; i++) { const td = el('td'), c = r.cells[i], a = i === 0 && c && c.querySelector('a');
+        const txt = c ? c.textContent.trim().replace(/:$/, '') : '';
+        if (a) { const x = el('a', '', txt); x.href = a.getAttribute('href'); td.appendChild(x); } else td.textContent = fmt(txt);
+        if (i === 1 && num(txt) > 0) td.className = 'act'; tr.appendChild(td); } t.tBodies[0].appendChild(tr); };
+      let vmRows = [];
+      if (st) {
+        const rows = [...st.rows], vi = rows.findIndex((r) => /Voicemail Box/.test(r.textContent));
+        const sc = card('System summary'), t = table(['', 'Active', 'Inactive', 'Total']); sc.appendChild(t);
+        rows.slice(0, vi < 0 ? rows.length : vi).filter((r) => r.cells.length >= 4 && /:\s*$/.test(r.cells[0].textContent.trim())).forEach((r) => addRow(t, r, 4));
+        left.appendChild(sc);
+        vmRows = vi < 0 ? [] : rows.slice(vi + 1).filter((r) => r.cells.length >= 4 && r.textContent.trim());
+      }
+      const total = (t) => { const vr = t && t.rows[t.rows.length - 1]; return vr ? num(vr.cells[0] && vr.cells[0].textContent) : null; };
+      const statCard = (t, title, vs) => {
+        const c = card(title), h = c.firstChild;
+        const mx = [...t.querySelectorAll('a')].find((a) => /max stats/i.test(a.textContent));
+        if (mx) { const a = el('a', 'mu-mx', 'View max stats'); a.href = mx.getAttribute('href'); h.appendChild(a); }
+        const vr = t.rows[t.rows.length - 1], hr = t.rows[t.rows.length - 2], g = el('div', 'mu-stats'); c.appendChild(g);
+        [...hr.cells].forEach((hc, i) => { const b = el('div'); b.appendChild(el('div', 'k', hc.textContent.trim())); b.appendChild(el('div', 'v', fmt(vr.cells[i] ? vr.cells[i].textContent.trim() : ''))); g.appendChild(b); });
+        const tot = total(t), inb = num(vr.cells[1] && vr.cells[1].textContent);
+        if (tot && inb !== null) { const pc = Math.max(1, Math.round(inb / tot * 100)), bar = el('div', 'mu-bar'), sp = el('span'); sp.style.width = pc + '%'; bar.appendChild(sp); c.appendChild(bar); c.appendChild(el('div', 'mu-lg', `Inbound ${pc}% · Outbound ${100 - pc}%`)); }
+        if (vs && tot !== null) { const p = Math.round(tot / vs * 100), v = el('div', 'mu-vs'), b = el('b', '', p + '%'); v.appendChild(b); v.appendChild(document.createTextNode(" of yesterday's total calls so far")); c.appendChild(v); }
+        return c;
+      };
+      if (today) right.appendChild(statCard(today, 'Today', total(yest)));
+      if (yest) right.appendChild(statCard(yest, 'Yesterday'));
+      right.appendChild(listsCard);
+      if (vmRows.length) { const vc = card('Voicemail'), t = table(['Box', 'New', 'Old', 'Total']); vc.appendChild(t); vmRows.forEach((r) => addRow(t, r, 4)); right.appendChild(vc); }
+      if (first) {
+        const anchor = kt.closest('center') || kt; anchor.parentNode.insertBefore(nd, anchor);
+        [kt, st, today, yest].filter(Boolean).forEach((t) => t.classList.add('mu-gone'));
+        [...main.querySelectorAll('img')].filter((i) => !i.closest('.mu-side,tr.mu-topbar,.mu-dash') && (i.getAttribute('width') | 0) >= 30).forEach((i) => i.classList.add('mu-gone'));
+      } else d.replaceWith(nd);
+      d = nd; stamp = Date.now(); failed = false; tick();
+      return true;
+    }
+    function tick() {
+      const u = d && d.querySelector('.mu-upd'); if (!u) return;
+      const s = Math.round((Date.now() - stamp) / 1000);
+      u.textContent = (failed ? "Couldn't refresh · " : '') + 'Updated ' + (s < 5 ? 'just now' : s < 60 ? s + 's ago' : Math.round(s / 60) + 'm ago');
+      u.classList.toggle('bad', failed);
+    }
+
+    // who's on what: Vici's own Real-Time report, read as text
+    const ST = { INCALL: ['On a call', 'blue', 0], DEAD: ['Call ended', 'red', 1], DISPO: ['Wrapping up', 'purple', 2], READY: ['Ready', 'green', 3], QUEUE: ['Queued', 'green', 3], PAUSED: ['Paused', 'amber', 4] };
+    async function agents() {
+      try {
+        if (!names) {
+          names = {};
+          const u = await get('admin.php?ADD=0A');
+          u.querySelectorAll('tr').forEach((r) => { if (r.cells.length >= 3) { const id = r.cells[0].textContent.trim(), n = r.cells[1].textContent.trim(); if (id && n && !/USER ID/i.test(id)) names[id] = n; } });
+        }
+        const body = 'RTajax=1&DB=0&groups[]=ALL-ACTIVE&adastats=1&UGdisplay=1&UidORname=0&orderby=timeup&CALLSdisplay=1&with_inbound=Y&report_display_type=TEXT';
+        const h = await fetch('AST_timeonVDADall.php', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body }).then((r) => r.text());
+        const pre = ((h.match(/<PRE>[\s\S]*?<\/PRE>/i) || [''])[0]).replace(/<[^>]+>/g, '');
+        const list = pre.split('\n').filter((l) => /^\|\s*(SIP|IAX|PJSIP|Local|R)\//.test(l)).map((l) => {
+          const c = l.split('|').map((x) => x.trim()), code = c[5].split(/\s+/)[0], id = c[2].replace(/\+$/, '').trim().split(/\s+/)[0];
+          return { id, name: names[id] || id, code, kind: (c[5].split(/\s+/)[1] || ''), time: c[6], s: secs(c[6]), camp: c[7], calls: c[8] };
+        });
+        const box = el('div');
+        const cnt = (k) => list.filter((a) => a.code === k).length;
+        const chips = el('div', 'mu-chips');
+        [['INCALL', 'on calls'], ['READY', 'ready'], ['PAUSED', 'paused'], ['DEAD', 'call ended']].forEach(([k, t]) => { const n = cnt(k); if (n) chips.appendChild(el('span', 'mu-pill ' + ST[k][1], n + ' ' + t)); });
+        box.appendChild(chips);
+        if (!list.length) box.appendChild(el('div', 'mu-lg', 'No agents logged in right now.'));
+        else {
+          const t = el('table', 'mu-t mu-at'), th = el('tr'); ['Agent', 'Status', 'Time', 'Campaign', 'Calls'].forEach((x) => th.appendChild(el('th', '', x)));
+          const hh = el('thead'); hh.appendChild(th); t.appendChild(hh); const tb = el('tbody'); t.appendChild(tb);
+          list.sort((a, b) => ((ST[a.code] || [, , 5])[2] - (ST[b.code] || [, , 5])[2]) || b.s - a.s).forEach((a) => {
+            const tr = el('tr'), s = ST[a.code] || [a.code, 'grey'];
+            const n = el('td'), na = el('a', '', a.name); na.href = 'user_stats.php?user=' + encodeURIComponent(a.id); n.appendChild(na); tr.appendChild(n);
+            const sc = el('td'); sc.appendChild(el('span', 'mu-pill ' + s[1], s[0] + (a.code === 'INCALL' && /^M$/.test(a.kind) ? ' · manual' : a.code === 'INCALL' && /^I$/.test(a.kind) ? ' · inbound' : ''))); tr.appendChild(sc);
+            tr.appendChild(el('td', a.code === 'PAUSED' && a.s >= 600 ? 'warn' : '', a.time));
+            tr.appendChild(el('td', '', a.camp)); tr.appendChild(el('td', '', a.calls)); tb.appendChild(tr);
+          });
+          box.appendChild(t);
+          box.appendChild(el('div', 'mu-lg', 'Paused 10 minutes or more shows in orange.'));
+        }
+        agentsCard.replaceChildren(agentsCard.firstChild, box);
+      } catch (e) { if (agentsCard.children.length < 2) agentsCard.appendChild(el('div', 'mu-lg', "Couldn't load the Real-Time report.")); }
+    }
+
+    // lists with a last call today, from Vici's Lists page (with lead counts)
+    async function lists() {
+      try {
+        const p = await get('admin.php?ADD=100');
+        const cl = [...p.querySelectorAll('a')].find((a) => /show list leads counts/i.test(a.textContent));
+        const doc = cl ? await get(cl.getAttribute('href')) : p;
+        const t = [...doc.querySelectorAll('table')].find((x) => !x.querySelector('table') && /LAST CALL DATE/i.test(x.textContent));
+        if (!t) throw 0;
+        const hr = [...t.rows].find((r) => /LAST CALL DATE/i.test(r.textContent)), H = [...hr.cells].map((c) => c.textContent.trim().toUpperCase());
+        const ix = (k) => H.indexOf(k), now = new Date(), ymd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        let live = 0;
+        const rows = [...t.rows].slice([...t.rows].indexOf(hr) + 1).map((r) => [...r.cells].map((c) => c.textContent.trim())).filter((c) => (c[ix('LAST CALL DATE')] || '').startsWith(ymd))
+          .filter((c) => (/live leads/i.test(c[ix('LIST NAME')]) ? (live++, false) : true))
+          .sort((a, b) => (b[ix('LAST CALL DATE')] > a[ix('LAST CALL DATE')] ? 1 : -1));
+        const box = el('div');
+        if (!rows.length) box.appendChild(el('div', 'mu-lg', 'No lists dialed yet today.'));
+        else {
+          const tt = el('table', 'mu-t'), th = el('tr'); ['List', 'Campaign', 'Leads', 'Last call'].forEach((x) => th.appendChild(el('th', '', x)));
+          const hh = el('thead'); hh.appendChild(th); tt.appendChild(hh); const tb = el('tbody'); tt.appendChild(tb);
+          rows.forEach((c) => { const tr = el('tr'), n = el('td'), a = el('a', '', c[ix('LIST NAME')] || c[ix('LIST ID')]);
+            a.href = 'admin.php?ADD=311&list_id=' + encodeURIComponent(c[ix('LIST ID')]); n.appendChild(a); tr.appendChild(n);
+            tr.appendChild(el('td', '', c[ix('CAMPAIGN')])); tr.appendChild(el('td', '', fmt(c[ix('LEADS COUNT')] || '')));
+            tr.appendChild(el('td', '', (c[ix('LAST CALL DATE')].split(' ')[1] || '').replace(/^(\d+):(\d+).*/, (m, h, mi) => `${(+h % 12) || 12}:${mi} ${+h < 12 ? 'AM' : 'PM'}`)));
+            tb.appendChild(tr); });
+          box.appendChild(tt);
+        }
+        if (live) box.appendChild(el('div', 'mu-lg', `Plus ${live} Live Leads list${live > 1 ? 's' : ''}.`));
+        listsCard.replaceChildren(listsCard.firstChild, box);
+      } catch (e) { if (listsCard.children.length < 2) listsCard.appendChild(el('div', 'mu-lg', "Couldn't load the Lists page.")); }
+    }
+
+    if (!build(main, true)) return;
+    agents(); lists();
+    setInterval(tick, 5000);
+    setInterval(async () => {
+      if (document.hidden) return;
+      try { const doc = await get('admin.php'); if (!build(doc.body, false)) throw 0; } catch (e) { failed = true; tick(); }
+      agents(); if (++ticks % 10 === 0) lists();
+    }, 30000);
+  }
+
+  function dashCSS() { return `
+  .mu-dash{padding:20px 26px 30px;max-width:1240px;font-family:"Segoe UI",Arial,sans-serif;text-align:left}
+  .mu-dhead{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+  .mu-ttl2{font:700 22px "Segoe UI",Arial;color:#1d2530}.mu-ttl2 span{font:13px "Segoe UI",Arial;color:#6b7686;margin-left:10px}
+  .mu-upd{margin-left:auto;font:12px "Segoe UI",Arial;color:#6b7686}.mu-upd:before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:#1aa33c;margin-right:6px}
+  .mu-upd.bad{color:#b45309}.mu-upd.bad:before{background:#d97706}
+  .mu-quick{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .mu-quick a{font:600 13px "Segoe UI",Arial;color:#1d4ed8!important;background:#fff;border:1px solid #cfd8e6;border-radius:999px;padding:6px 14px;text-decoration:none!important}
+  .mu-quick a:hover{background:#eef3ff;border-color:#2563eb}
+  .mu-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+  .mu-kpi{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #dde2e8;border-radius:12px;padding:16px 18px;text-decoration:none!important;box-shadow:0 1px 3px rgba(20,30,50,.06);transition:.12s}
+  .mu-kpi:hover{border-color:var(--c);box-shadow:0 4px 14px rgba(20,30,50,.1)}
+  .mu-kpi i{width:10px;height:44px;border-radius:6px;background:var(--c);flex:none}
+  .mu-kpi .k{font:600 12px "Segoe UI",Arial;color:#5b6675}.mu-kpi .v{font:700 30px "Segoe UI",Arial;color:#1d2530;line-height:1.1}
+  .mu-kpi .s{font:12px "Segoe UI",Arial;color:#6b7686;margin-top:2px}
+  .mu-row2{display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start}
+  .mu-col2{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .mu-c{background:#fff;border:1px solid #dde2e8;border-radius:12px;box-shadow:0 1px 3px rgba(20,30,50,.06);padding:14px 18px}
+  .mu-c h3{margin:0 0 10px;font:700 12px "Segoe UI",Arial;letter-spacing:.06em;text-transform:uppercase;color:#4a5563;display:flex;align-items:center}
+  .mu-mx{margin-left:auto;font:600 12px "Segoe UI",Arial;text-transform:none;letter-spacing:0;color:#2563eb!important;text-decoration:none!important}
+  table.mu-t{width:100%;border-collapse:collapse;font:14px "Segoe UI",Arial}
+  table.mu-t th{text-align:right;font:700 11px "Segoe UI",Arial;color:#5b6675;padding:6px 8px;border-bottom:1px solid #e6eaef}
+  table.mu-t td{padding:8px;border-bottom:1px solid #f0f2f5;text-align:right;color:#1d2530}
+  table.mu-t td:first-child,table.mu-t th:first-child{text-align:left}
+  table.mu-t td:first-child a{color:#1d4ed8!important;font-weight:600;text-decoration:none!important}
+  table.mu-t td.act{color:#137a32;font-weight:700}
+  table.mu-at td:nth-child(2),table.mu-at th:nth-child(2){text-align:left}
+  table.mu-t td.warn{color:#c2410c;font-weight:700}
+  .mu-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .mu-pill{display:inline-block;font:600 12px "Segoe UI",Arial;border-radius:999px;padding:2px 10px;white-space:nowrap}
+  .mu-pill.blue{background:#dbeafe;color:#1d4ed8}.mu-pill.green{background:#dcfce7;color:#137a32}.mu-pill.amber{background:#fef3c7;color:#b45309}
+  .mu-pill.red{background:#fee2e2;color:#b91c1c}.mu-pill.purple{background:#ede9fe;color:#6d28d9}.mu-pill.grey{background:#eef1f5;color:#4a5563}
+  .mu-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .mu-stats .k{font:600 11px "Segoe UI",Arial;color:#6b7686}.mu-stats .v{font:700 20px "Segoe UI",Arial;color:#1d2530}
+  .mu-bar{height:8px;border-radius:999px;background:#ede9fe;overflow:hidden;margin-top:12px}.mu-bar span{display:block;height:100%;background:#2563eb}
+  .mu-lg{font:12px "Segoe UI",Arial;color:#6b7686;margin-top:6px}
+  .mu-vs{font:13px "Segoe UI",Arial;color:#4a5563;margin-top:10px;padding-top:10px;border-top:1px solid #f0f2f5}.mu-vs b{color:#1d2530}
+  html.mu-adm .mu-side td.mu-dashbtn>a svg{flex:none}`; }
 
   // change a page title's words into a heading (never touches the elements around it)
   function retitle(main, re, text) {
