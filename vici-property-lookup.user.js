@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      14.2
+// @version      14.3
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
+// @match        *://mtgusa.talkitpro.com/vicidial/admin_listloader*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -199,6 +200,270 @@ function readHomesPage(doc) {
   }
 
   if (/(^|\.)homes\.com$/.test(location.hostname)) { setTimeout(() => { if (!stepAside()) homesWorker(); }, IS_EXT ? 0 : 1500); return; }
+  // the lead loader (admins only) gets its own look; nothing else of this script runs there
+  if (/\/vicidial\/admin_listloader/.test(location.pathname)) { setTimeout(() => { if (!stepAside()) leadLoader(); }, IS_EXT ? 0 : 300); return; }
+
+  // =====================================================================
+  //  Lead loader (admins only: agents can't open this page). Modern look, Mortgageusa's names for the
+  //  relabeled fields, and a preview of the picked file. Vici's own form, fields and buttons are kept
+  //  and only restyled/moved, so what gets sent to Vici never changes.
+  // =====================================================================
+  function leadLoader() {
+    const KEY = { 'TITLE': 'FICO', 'ADDRESS2': 'Loan amount', 'ADDRESS3': 'Cash out amount', 'PROVINCE': 'Value',
+      'VENDOR LEAD CODE': 'Loan type', 'ALT PHONE': 'SSN', 'SECURITY PHRASE': 'Rate', 'EMAIL': 'Revolving debt', 'COMMENTS': 'Installments' };
+    const PV_KEY = 'muLeadPreview';   // the picked file's preview: this browser tab only (sessionStorage), never sent anywhere
+    const h = (s) => String(s === undefined || s === null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const fileIn = document.querySelector('input[type=file][name=leadfile]');
+    const th = [...document.querySelectorAll('th')].find((x) => /^\s*VICIDIAL Column\s*$/i.test(x.textContent));
+    const mapTable = th && th.closest('table');
+    if (!fileIn && !(mapTable && mapTable.closest('form'))) { try { sessionStorage.removeItem(PV_KEY); } catch (e) {} return; }   // results page: done with the file
+
+    document.documentElement.classList.add('mu-ll');
+    const st = document.createElement('style');
+    st.textContent = `
+    html.mu-ll body{background:#eef1f5!important}
+    .mu-wrap{display:flex;gap:18px;align-items:flex-start;justify-content:center;margin:22px 20px 40px;font:13px "Segoe UI",Arial,sans-serif;color:#1d2530}
+    .mu-wrap *{box-sizing:border-box}
+    .mu-card,.mu-pv{background:#fff;border:1px solid #dde2e8;border-radius:12px;box-shadow:0 2px 10px rgba(20,30,50,.08);overflow:hidden}
+    .mu-card{width:760px;flex:none}
+    .mu-pv{flex:1;min-width:380px;max-width:820px;position:sticky;top:12px}
+    .mu-head{padding:16px 20px 12px;border-bottom:1px solid #e6eaef}
+    .mu-head h1{margin:0;font:700 18px "Segoe UI",Arial}.mu-head p{margin:4px 0 0;color:#5b6675}
+    .mu-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .mu-chip{background:#f1f4f8;border:1px solid #dde2e8;border-radius:999px;padding:3px 10px;font-size:12px;color:#4a5563}.mu-chip b{color:#1d2530}
+    .mu-legend{display:flex;gap:16px;align-items:center;padding:10px 20px;font-size:12px;color:#5b6675;background:#fafbfc;border-bottom:1px solid #e6eaef}
+    .mu-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;background:#2563eb;margin-right:6px;vertical-align:-1px}
+    /* both screens: Vici's table restyled */
+    table.mu-t{width:100%!important;background:#fff!important;border-collapse:collapse}
+    table.mu-t tr{background:#fff!important}
+    table.mu-t td{padding:9px 20px!important;border-bottom:1px solid #eef1f4;text-align:left!important;vertical-align:middle}
+    table.mu-t td font,table.mu-t td b{font:13px "Segoe UI",Arial!important;color:#4a5563}
+    table.mu-t td:first-child font,table.mu-t td:first-child b{font-weight:600!important;color:#1d2530}
+    table.mu-t select{height:32px;border:1px solid #cdd4dd;border-radius:8px;padding:0 10px;font:13px "Segoe UI",Arial;background:#fff;color:#1d2530;max-width:440px}
+    table.mu-t select[multiple]{height:110px;padding:4px;width:440px}
+    table.mu-t select:focus{outline:2px solid #2563eb;outline-offset:0;border-color:#2563eb}
+    table.mu-t input[type=radio],table.mu-t input[type=checkbox]{accent-color:#2563eb;margin:0 5px 0 0;vertical-align:-2px}
+    table.mu-t input[type=checkbox]{margin-left:10px}
+    table.mu-t img[alt=HELP]{width:16px;height:16px;opacity:.55;vertical-align:middle;cursor:pointer}
+    table.mu-t input[type=file]{font:13px "Segoe UI",Arial;color:#1d2530}
+    table.mu-t input[type=file]::file-selector-button{background:#2563eb;color:#fff;border:0;border-radius:8px;height:34px;padding:0 16px;font:600 13px "Segoe UI",Arial;margin-right:12px;cursor:pointer}
+    table.mu-t tr.mu-file td{background:#f5f8ff!important;padding:16px 20px!important}
+    html.mu-ll input[name=submit_file],html.mu-ll input[name=OK_to_process]{background:#2563eb!important;color:#fff;border:0;border-radius:8px;height:36px;padding:0 22px;font:600 13px "Segoe UI",Arial;cursor:pointer}
+    html.mu-ll input[name=reload_page]{background:#fff!important;color:#1d2530;border:1px solid #c4ccd6;border-radius:8px;height:36px;padding:0 16px;font:600 13px "Segoe UI",Arial;cursor:pointer}
+    table.mu-up td:first-child{width:210px!important}
+    table.mu-up tr:nth-last-child(2) td{text-align:right!important;background:#fafbfc!important;padding:14px 20px!important}
+    table.mu-up tr:last-child td{border:0;padding:8px 20px!important}table.mu-up tr:last-child font{font-size:11px!important;color:#8a94a3!important}
+    table.mu-map tr:first-child{display:none}
+    table.mu-map td{padding:7px 20px!important}
+    table.mu-map td:first-child{width:52%}
+    table.mu-map font.standard{font:600 13px "Segoe UI",Arial!important;color:#1d2530}
+    table.mu-map select{width:100%;max-width:none}
+    table.mu-map select.mu-set{border-color:#1aa33c;background:#f2fbf4}
+    table.mu-map select.mu-auto{border-style:dashed}
+    table.mu-map tr.mu-row{background:#f5f8ff!important}
+    table.mu-map tr:last-child{background:#fafbfc!important}
+    table.mu-map tr:last-child th{padding:14px 20px!important;text-align:right}
+    .mu-lbl{display:flex;align-items:center;gap:8px;font:700 13px "Segoe UI",Arial;color:#1d4ed8}
+    .mu-lbl::before{content:"";width:10px;height:10px;border-radius:3px;background:#2563eb}
+    .mu-orig{display:block;margin-left:18px;font:11px "Segoe UI",Arial;color:#7a8494}
+    .mu-old,html.mu-ll form>hr{display:none}
+    /* the file preview */
+    .mu-pv table{width:100%;border-collapse:collapse}
+    .mu-pv th{text-align:left;font:700 11px "Segoe UI",Arial;letter-spacing:.05em;color:#5b6675;background:#fafbfc;padding:8px 14px;border-bottom:1px solid #e6eaef}
+    .mu-pv td{padding:7px 14px;border-bottom:1px solid #eef1f4;vertical-align:top}
+    .mu-pv td.col{font-weight:700;white-space:nowrap}
+    .mu-pv td.ex span{display:inline-block;background:#f1f4f8;border-radius:6px;padding:1px 7px;margin:0 4px 3px 0;white-space:nowrap;max-width:170px;overflow:hidden;text-overflow:ellipsis;vertical-align:top}
+    .mu-pv td.to{white-space:nowrap}
+    .mu-pv .tag{display:inline-block;border-radius:999px;padding:2px 9px;font:600 11.5px "Segoe UI",Arial}
+    .mu-pv .tag.on{background:#e7f7ec;color:#137a32;border:1px solid #b6e3c3}
+    .mu-pv .tag.off{background:#f1f4f8;color:#8a94a3;border:1px dashed #c9d0d9}
+    .mu-pv tr.on td.col{color:#137a32}
+    .mu-pv .note{padding:10px 14px;font-size:11.5px;color:#7a8494;background:#fafbfc}
+    .mu-empty{padding:28px 20px;color:#7a8494;text-align:center}`;
+    document.head.appendChild(st);
+
+    // put Vici's table into a card (still inside Vici's form), with the preview beside it
+    const frame = (table, title, sub) => {
+      const wrap = document.createElement('div'); wrap.className = 'mu-wrap';
+      const card = document.createElement('div'); card.className = 'mu-card';
+      card.innerHTML = `<div class="mu-head"><h1>${title}</h1>${sub}</div>`;
+      table.parentNode.insertBefore(wrap, table); wrap.appendChild(card); card.appendChild(table);
+      table.classList.add('mu-t'); table.removeAttribute('width'); table.removeAttribute('bgcolor');
+      const pv = document.createElement('div'); pv.className = 'mu-pv'; wrap.appendChild(pv);
+      return { card, pv };
+    };
+    const loadPV = () => { try { return JSON.parse(sessionStorage.getItem(PV_KEY) || 'null'); } catch (e) { return null; } };
+    const chipsFor = (p, extra) => `<div class="mu-chips"><span class="mu-chip"><b>${h(p.name)}</b></span><span class="mu-chip"><b>${Number(p.total).toLocaleString()}</b> leads</span>${extra}</div>`;
+    const note = '<div class="note">Read on this PC only and kept only while this tab is open. Cleared once the leads are processed.</div>';
+
+    // ---------- screen 1: pick the file ----------
+    if (fileIn) {
+      const table = fileIn.closest('table');
+      const { pv } = frame(table, 'Load leads', '<p>Pick the file and the list. You match the columns on the next screen.</p>');
+      table.classList.add('mu-up');
+      fileIn.closest('tr').classList.add('mu-file');
+      const show = (p, msg) => {
+        pv.innerHTML = !p ? `<div class="mu-head"><h1>Your file</h1></div><div class="mu-empty">${msg || 'Pick a file to see what\'s in it.'}</div>`
+          : `<div class="mu-head"><h1>Your file</h1>${chipsFor(p, `<span class="mu-chip"><b>${p.headers.length}</b> columns</span>`)}</div>
+             <table><thead><tr><th>COLUMN</th><th>FIRST LEADS</th></tr></thead><tbody>${p.headers.map((c, i) =>
+               `<tr><td class="col">${h(c)}</td><td class="ex">${p.rows.slice(0, 2).map((r) => `<span>${h(r[i])}</span>`).join('') || '<i>empty</i>'}</td></tr>`).join('')}</tbody></table>${note}`;
+      };
+      try { sessionStorage.removeItem(PV_KEY); } catch (e) {}
+      show(null);
+      fileIn.addEventListener('change', async () => {
+        const f = fileIn.files && fileIn.files[0];
+        try { sessionStorage.removeItem(PV_KEY); } catch (e) {}
+        if (!f) return show(null);
+        show(null, 'Reading the file…');
+        try {
+          const p = await readLeadFile(f);
+          if (!p) return show(null, 'No preview for this kind of file (.xls). The upload itself still works. Save it as .xlsx or .csv to see the preview.');
+          try { sessionStorage.setItem(PV_KEY, JSON.stringify(p)); } catch (e) {}
+          show(p);
+        } catch (e) { show(null, 'Couldn\'t read this file for the preview. The upload itself still works.'); }
+      });
+      return;
+    }
+
+    // ---------- screen 2: match the columns ----------
+    const hv = (n) => ((document.querySelector(`input[name=${n}]`) || {}).value || '').trim();
+    const info = mapTable.previousElementSibling && mapTable.previousElementSibling.tagName === 'CENTER' ? mapTable.previousElementSibling : null;
+    if (info) info.classList.add('mu-old');
+    const chip = (label, v) => v ? `<span class="mu-chip">${label} <b>${h(v)}</b></span>` : '';
+    const { card, pv } = frame(mapTable, 'Match your file\'s columns',
+      `<div class="mu-chips">${chip('File', hv('leadfile_name'))}${chip('List', hv('list_id_override'))}${chip('Phone code', hv('phone_code_override'))}${chip('Duplicate check', hv('dupcheck'))}</div>`);
+    mapTable.classList.add('mu-map');
+    card.querySelector('.mu-head').insertAdjacentHTML('afterend',
+      '<div class="mu-legend"><span><i></i>Mortgageusa name (Vici\'s own name underneath)</span><span style="margin-left:auto">Green = matched · dashed = matched for you, check it</span></div>');
+    mapTable.querySelectorAll('td > font.standard').forEach((f) => {
+      const name = f.textContent.replace(/:\s*$/, '').trim().toUpperCase();
+      if (KEY[name]) { f.innerHTML = `<span class="mu-lbl">${h(KEY[name])}</span><span class="mu-orig">Vici: ${h(name.toLowerCase())}</span>`; f.closest('tr').classList.add('mu-row'); }
+      else f.textContent = name.charAt(0) + name.slice(1).toLowerCase().replace(/\bid\b/, 'ID');
+    });
+    const sels = [...mapTable.querySelectorAll('select')];
+    // Columns whose meaning is clear get matched for you (marked "auto"); any pick of your own always wins.
+    const SAME = {
+      first_name_field: ['first', 'first name', 'firstname', 'fname'], last_name_field: ['last', 'last name', 'lastname', 'lname'],
+      address1_field: ['address', 'address1', 'street', 'street address', 'property address'], city_field: ['city'], state_field: ['state', 'st'],
+      postal_code_field: ['postal', 'postal code', 'zip', 'zip code', 'zipcode'], phone_number_field: ['phone', 'phone number', 'phone1', 'cell', 'mobile'],
+      province_field: ['value', 'home value', 'property value', 'est value'], security_phrase_field: ['interest', 'interest rate', 'rate'],
+      vendor_lead_code_field: ['mort type', 'mortgage type', 'loan type'], title_field: ['fico', 'credit', 'credit score'],
+      address2_field: ['loan amount', 'loan amt', 'balance'], address3_field: ['cash out', 'cash out amount', 'cashout'],
+      alt_phone_field: ['ssn'], email_field: ['revolving', 'revolving debt'], comments_field: ['installment', 'installments', 'source'],   // Mortgageusa's files: Source always goes into Installments
+      date_of_birth_field: ['dob', 'date of birth', 'birthday'], middle_initial_field: ['middle', 'middle initial', 'mi'] };
+    const nm = (x) => String(x || '').toLowerCase().replace(/["']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const autoMatch = () => {
+      const taken = new Set(sels.map((s) => s.value).filter((v) => v !== '-1'));
+      sels.forEach((s) => {
+        if (s.value !== '-1' || !SAME[s.name]) return;
+        const o = [...s.options].find((o) => o.value !== '-1' && !taken.has(o.value) && SAME[s.name].includes(nm(o.textContent)));
+        if (o) { s.value = o.value; s.dataset.auto = '1'; taken.add(o.value); }
+      });
+    };
+    const labelOf = (s) => { const f = s.closest('tr').querySelector('td font.standard'); const b = f && f.querySelector('.mu-lbl'); return (b ? b.textContent : f ? f.textContent : '').trim(); };
+    const p = loadPV();
+    const ok = p && p.name === hv('leadfile_name');
+    const draw = () => {
+      sels.forEach((s) => { s.classList.toggle('mu-set', s.value !== '-1'); s.classList.toggle('mu-auto', !!s.dataset.auto && s.value !== '-1'); });
+      if (!ok) {
+        pv.innerHTML = '<div class="mu-head"><h1>Your file</h1></div><div class="mu-empty">The preview shows up when the file is picked on the first screen. Click START OVER and pick it again to see it here.</div>';
+        return;
+      }
+      const used = p.headers.filter((c, i) => sels.some((s) => s.value === String(i))).length;
+      pv.innerHTML = `<div class="mu-head"><h1>Your file</h1>${chipsFor(p, `<span class="mu-chip"><b>${used}</b> of ${p.headers.length} columns matched</span>`)}</div>
+        <table><thead><tr><th>FILE COLUMN</th><th>FIRST FEW LEADS</th><th>GOES INTO</th></tr></thead><tbody>${p.headers.map((c, i) => {
+          const to = sels.filter((s) => s.value === String(i)).map((s) => labelOf(s) + (s.dataset.auto ? ' · auto' : ''));
+          const ex = p.rows.map((r) => r[i]).filter((v) => v !== '' && v != null).slice(0, 3);
+          return `<tr class="${to.length ? 'on' : ''}"><td class="col">${h(c)}</td><td class="ex">${ex.map((v) => `<span>${h(v)}</span>`).join('') || '<i>empty</i>'}</td>
+            <td class="to">${to.length ? to.map((t) => `<span class="tag on">→ ${h(t)}</span>`).join(' ') : '<span class="tag off">not used</span>'}</td></tr>`;
+        }).join('')}</tbody></table>${note}`;
+    };
+    sels.forEach((s) => s.addEventListener('change', () => { delete s.dataset.auto; draw(); }));
+    autoMatch();
+    draw();
+    const form = mapTable.closest('form');
+    form.addEventListener('submit', () => { try { sessionStorage.removeItem(PV_KEY); } catch (e) {} });
+  }
+
+  // Reads the first rows of a lead file in the browser: .xlsx (Excel), .csv, .txt (comma, tab or pipe).
+  // Returns { name, headers, rows (first 3 leads), total } or null for kinds it can't read (.xls).
+  async function readLeadFile(f) {
+    const name = f.name;
+    if (/\.xlsx$/i.test(name)) return Object.assign({ name }, await readXlsx(await f.arrayBuffer()));
+    if (/\.xls$/i.test(name)) return null;
+    const text = await f.text();
+    const lines = text.split(/\r\n|\n|\r/).filter((l) => l.trim() !== '');
+    if (!lines.length) return { name, headers: [], rows: [], total: 0 };
+    const first = lines[0];
+    const delim = ['\t', '|', ','].sort((a, b) => first.split(b).length - first.split(a).length)[0];
+    const split = (line) => {
+      if (delim !== ',') return line.split(delim).map((x) => x.trim());
+      const out = []; let cur = '', q = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (q) { if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+        else if (ch === '"') q = true; else if (ch === ',') { out.push(cur.trim()); cur = ''; } else cur += ch;
+      }
+      out.push(cur.trim()); return out;
+    };
+    return { name, headers: split(first), rows: lines.slice(1, 4).map(split), total: lines.length - 1 };
+  }
+
+  // Minimal .xlsx reader (an .xlsx is a zip of XML files): first sheet only, header row + first 3 leads + count.
+  async function readXlsx(buf) {
+    const dv = new DataView(buf), u8 = new Uint8Array(buf);
+    let eocd = -1;
+    for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error('not a zip');
+    const files = {};
+    let p = dv.getUint32(eocd + 16, true);
+    const n = dv.getUint16(eocd + 10, true);
+    for (let k = 0; k < n; k++) {
+      const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+      const fl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+      const fname = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + fl));
+      files[fname] = { method, csize, off };
+      p += 46 + fl + xl + cl;
+    }
+    const read = async (fname) => {
+      const e = files[fname]; if (!e) return null;
+      const start = e.off + 30 + dv.getUint16(e.off + 26, true) + dv.getUint16(e.off + 28, true);
+      const data = u8.subarray(start, start + e.csize);
+      if (e.method === 0) return new TextDecoder().decode(data);
+      const ds = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      return await new Response(ds).text();
+    };
+    const xml = (s) => new DOMParser().parseFromString(s, 'application/xml');
+    // the first sheet, as the workbook lists it
+    let sheetPath = 'xl/worksheets/sheet1.xml';
+    try {
+      const wb = xml(await read('xl/workbook.xml')), rels = xml(await read('xl/_rels/workbook.xml.rels'));
+      const s1 = wb.getElementsByTagName('sheet')[0];
+      const rid = s1 && (s1.getAttribute('r:id') || s1.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id'));
+      const rel = [...rels.getElementsByTagName('Relationship')].find((r) => r.getAttribute('Id') === rid);
+      if (rel) { const t = rel.getAttribute('Target').replace(/^\//, ''); sheetPath = t.startsWith('xl/') ? t : 'xl/' + t; }
+    } catch (e) {}
+    const ssText = await read('xl/sharedStrings.xml');
+    const shared = ssText ? [...xml(ssText).getElementsByTagName('si')].map((si) => [...si.getElementsByTagName('t')].map((t) => t.textContent).join('')) : [];
+    const sheet = xml(await read(sheetPath));
+    const rowsEl = [...sheet.getElementsByTagName('row')];
+    const colIdx = (ref) => { const m = String(ref || '').match(/^[A-Z]+/); if (!m) return -1; let x = 0; for (const ch of m[0]) x = x * 26 + ch.charCodeAt(0) - 64; return x - 1; };
+    const cellsOf = (row) => {
+      const out = []; let next = 0;
+      for (const c of row.getElementsByTagName('c')) {
+        const i = c.hasAttribute('r') ? colIdx(c.getAttribute('r')) : next; next = i + 1;
+        const t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0];
+        out[i] = t === 's' ? (shared[+(v && v.textContent)] || '') : t === 'inlineStr' ? [...c.getElementsByTagName('t')].map((x) => x.textContent).join('') : (v ? v.textContent : '');
+      }
+      for (let i = 0; i < out.length; i++) if (out[i] === undefined) out[i] = '';
+      return out;
+    };
+    const filled = rowsEl.filter((r) => [...r.getElementsByTagName('v'), ...r.getElementsByTagName('t')].some((x) => x.textContent.trim() !== ''));
+    if (!filled.length) return { headers: [], rows: [], total: 0 };
+    const headers = cellsOf(filled[0]);
+    return { headers, rows: filled.slice(1, 4).map(cellsOf), total: filled.length - 1 };
+  }
+
 
 
   // =====================================================================

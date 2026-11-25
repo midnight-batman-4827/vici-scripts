@@ -36,7 +36,7 @@ manifest = {
         'https://www.zillowstatic.com/*', 'https://parser-external.geo.moveaws.com/*',
         'https://www.zillow.com/*', 'https://www.trulia.com/*', 'https://www.realtor.com/*'],
     'content_scripts': [{
-        'matches': ['https://mtgusa.talkitpro.com/agc/*', 'http://mtgusa.talkitpro.com/agc/*', 'https://www.homes.com/*'],
+        'matches': ['https://mtgusa.talkitpro.com/agc/*', 'http://mtgusa.talkitpro.com/agc/*', 'https://mtgusa.talkitpro.com/vicidial/admin_listloader*', 'http://mtgusa.talkitpro.com/vicidial/admin_listloader*', 'https://www.homes.com/*'],
         'js': ['content.js'], 'run_at': 'document_idle'}],
 }
 json.dump(manifest, open(os.path.join(out, 'manifest.json'), 'w'), indent=2)
