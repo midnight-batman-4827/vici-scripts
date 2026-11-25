@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      17.1
+// @version      17.2
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -2761,7 +2761,7 @@ function readHomesPage(doc) {
         #vl-livebadge.dead{background:#c4252b;color:#fff}#vl-livebadge.dead i{background:#ffd5d5}
         .vl-full{left:0!important;top:0!important;width:calc(100vw / var(--vlz, 1))!important;height:calc(100vh / var(--vlz, 1))!important;background:#fff;z-index:2147483000!important}
         .vl-full>table{width:100%!important;height:100%!important}
-        html.vl-takeover #vprop-tabbar,html.vl-takeover #vprop-card,html.vl-takeover #vprop-screen,html.vl-takeover [id^="vl-"]:not(#vl-hidden):not(#vl-style):not(#vl-pitch-style):not(#vl-dispo),
+        html.vl-takeover #vprop-tabbar,html.vl-takeover #vprop-card,html.vl-takeover #vprop-screen,html.vl-takeover [id^="vl-"]:not(#vl-hidden):not(#vl-style):not(#vl-pitch-style):not(#vl-dispo):not(#vl-cover):not(#vl-intro),
         html.vl-takeover #AgentViewSpan,html.vl-takeover #AgentViewLinkSpan,html.vl-takeover #webphoneSpan,html.vl-takeover #SecondSspan{visibility:hidden!important}
         html.vl-takeover #vl-pitch{display:none!important}
         #vl-hklist{margin-top:8px;width:166px;box-sizing:border-box;background:#ffeebb;border:1px solid #e3c77a;border-radius:8px;padding:6px 8px;font:12px/1.5 Arial,sans-serif;display:none}
@@ -3136,7 +3136,10 @@ function readHomesPage(doc) {
   function takeover() {
     let full = null, top = -1;   // the one on top, if several are open
     document.querySelectorAll('body > span[id], #vicidial_form > span[id]').forEach((el) => {
-      if (/^vl-|^vprop|^LoadingBox$/.test(el.id)) return;   // Vici's "Loading…" box at login isn't a message (the intro covers it)
+      if (/^vl-|^vprop|^LoadingBox$/.test(el.id)) return;
+      // Vici's white "not opened properly" and green "ALERT" boxes flash while the screen starts up: they stay
+      // under the login cover / opening animation instead of counting as a message
+      if (/^(InvalidOpenerSpan|blind_monitor_alert_span)$/.test(el.id) && (byId('vl-cover') || byId('vl-intro') || (() => { try { return !introDone; } catch (e) { return true; } })())) return;   // Vici's "Loading…" box at login isn't a message (the intro covers it)
       const cs = getComputedStyle(el), z = parseInt(cs.zIndex, 10) || 0;
       if (cs.visibility !== 'visible' || cs.display === 'none' || z < 40 || z <= top) return;
       const t = el.querySelector('table'); if (!t) return;
