@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.8
+// @version      15.9
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1326,7 +1326,8 @@ function readHomesPage(doc) {
   function lookup(a) {
     if (cache[a.full]) return cache[a.full];
     const c = cache[a.full] = { done: false, sites: {} };
-    c.promise = Promise.all([lookupZillow(a), lookupRealtor(a)]).then(([z, r]) => {
+    // Zillow only: Realtor, Trulia and Homes.com block background lookups, so they're plain "open" links now
+    c.promise = Promise.all([lookupZillow(a), Promise.resolve({ near: [], failed: false })]).then(([z, r]) => {
       // an exact hit has an id; otherwise we keep the close matches for the agent to pick from
       c.zillow = z.zpid ? z : null; c.zNear = z.near || []; c.zFail = !z.zpid && !!z.failed;
       c.realtor = r.id ? r : null; c.rNear = r.near || []; c.rFail = !r.id && !!r.failed;
@@ -1342,7 +1343,7 @@ function readHomesPage(doc) {
     if (c.retrying) return;
     c.retrying = true;
     if (!manual) c.retries = (c.retries || 0) + 1;
-    const z = c.zFail ? lookupZillow(c.pick || a) : null, r = c.rFail ? lookupRealtor(c.pick || a) : null;
+    const z = c.zFail ? lookupZillow(c.pick || a) : null, r = null;
     const keys = [].concat(c.zFail ? ['zillow', 'trulia'] : [], c.rFail ? ['realtor'] : [],
       siteState(c, 'homes').state === 'error' ? ['homes'] : []);
     keys.forEach((k) => { c.sites[k] = { state: 'loading' }; });
@@ -1695,24 +1696,20 @@ function readHomesPage(doc) {
     p.full = `${p.street}, ${p.city}, ${p.state} ${p.zip}`; p.missing = [];
     c.pick = p;
     const reset = (k) => { c.sites[k] = { state: 'loading' }; };
-    const zNeeds = !c.zillow || c.zillowPicked, rNeeds = !c.realtor || c.realtorPicked;
-    if (zNeeds) ['zillow', 'trulia'].forEach(reset);
+    const zNeeds = !c.zillow || c.zillowPicked, rNeeds = false;
+    if (zNeeds) reset('zillow');
     if (rNeeds) reset('realtor');
     renderAll();
 
     // Homes.com: re-run only if its tab was already opened; otherwise it uses the pick when opened
     const hs = siteState(c, 'homes');
     const hExact = hs.state === 'ok' && !hs.picked;
-    if (!hExact) {
-      c.homesAddr = p;
-      c.homesPick = key === 'homes' ? x.line : '';
-      if (hs.state !== 'idle') { c.sites.homes = { state: 'idle' }; loadSite(a, c, 'homes'); }
-    }
+    if (!hExact) { c.homesAddr = p; c.homesPick = ''; }
 
     if (zNeeds) {
       const z = (key === 'zillow' || key === 'trulia') ? x : await lookupZillow(p);
       c.zHistory = null;
-      if (z && z.zpid) { c.zillow = z; c.zillowPicked = true; ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: 'idle' }; loadSite(a, c, k); }); }
+      if (z && z.zpid) { c.zillow = z; c.zillowPicked = true; c.sites.zillow = { state: 'idle' }; loadSite(a, c, 'zillow'); }
       else { c.zillow = null; c.zNear = (z && z.near) || []; c.zFail = !!(z && z.failed); ['zillow', 'trulia'].forEach((k) => { c.sites[k] = { state: c.zFail ? 'offline' : 'nomatch', near: c.zNear, url: SITES.find((y) => y.key === k).url(a, c) }; }); }
     }
     if (rNeeds) {
@@ -1724,7 +1721,7 @@ function readHomesPage(doc) {
   }
 
   function loadDetails(a, c) {
-    ['zillow', 'trulia', 'realtor'].forEach((k) => loadSite(a, c, k)); // Homes.com starts from renderAll (background tab)
+    loadSite(a, c, 'zillow');   // the one Property page; the other sites open in a normal tab when an agent clicks them
   }
 
   // Opens homes.com in a background tab, lets the homes.com helper search the address, waits for its answer
@@ -1915,6 +1912,16 @@ function readHomesPage(doc) {
     .vprop-tab.fail .dot{background:#d08a00}
     .vprop-tab.active{background:currentColor}
     .vprop-tab.active span.lbl{color:#fff}
+    .vprop-tab.vprop-one{gap:7px;padding:0 12px 0 9px!important;background:#1652e6;color:#fff;font:600 13px "Segoe UI",Arial,sans-serif;border-radius:8px 8px 0 0}
+    .vprop-tab.vprop-one:hover{background:#0f45c7}.vprop-tab.vprop-one.active{background:#0b2a55}
+    .vprop-tab.vprop-one svg{width:16px;height:16px}.vprop-tab.vprop-one .lbl{color:#fff}
+    .vprop-tab.vprop-one .dot{background:#c9d6f5}.vprop-tab.vprop-one.ready .dot{background:#7CFF9B;box-shadow:0 0 0 2px rgba(255,255,255,.35)}.vprop-tab.vprop-one.fail .dot{background:#ffc24d}
+    .vp-sites-open{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+    .vp-go{font:600 12.5px var(--font);border:1px solid var(--border);background:var(--card);color:var(--ink)!important;border-radius:8px;padding:6px 11px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+    .vp-go:hover{border-color:var(--accent)}.vp-go .vp-fav{border-radius:3px}
+    .vp-more{display:flex;gap:10px;flex-wrap:wrap}
+    .vp-more a{flex:1;min-width:200px;display:flex;align-items:center;gap:10px;background:var(--tile);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;color:var(--ink)!important;text-decoration:none}
+    .vp-more a:hover{border-color:var(--accent)}.vp-more a span{display:block;font-size:12px;color:var(--muted)}
 
 
     #vprop-card{position:absolute;z-index:8000;box-sizing:border-box;background:#fff;color:#1f2733;border:1px solid #cfd5dd;border-radius:12px;
@@ -1979,8 +1986,8 @@ function readHomesPage(doc) {
     .vp-ch-p{font-size:13px;font-weight:600}
     #vprop-screen .up{color:var(--up)} #vprop-screen .down{color:var(--down)}
     .vp-na{font-size:12px;color:var(--muted);margin-top:6px}
-    .vp-lead{background:#fff8e6;border:1px solid #f0d9a0;border-radius:var(--radius);padding:10px 14px;display:flex;gap:22px;flex-wrap:wrap;margin-top:14px}
-    .vp-lead .k{color:#5d4a14;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;width:100%}
+    .vp-lead{background:var(--leadBg,#fff8e6);color:var(--leadInk,inherit);border:1px solid var(--leadBorder,#f0d9a0);border-radius:var(--radius);padding:10px 14px;display:flex;gap:22px;flex-wrap:wrap;margin-top:14px}
+    .vp-lead .k{color:var(--leadHead,#5d4a14);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;width:100%}
     .vp-hl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .vp-hl>div{display:flex;gap:10px;align-items:center}
     .vp-hl .ic{width:30px;height:30px;border-radius:50%;background:var(--tile);color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -2050,6 +2057,16 @@ function readHomesPage(doc) {
     .vp-thumbs img{width:96px;height:68px;object-fit:cover;display:block}`;
   document.head.appendChild(css);
 
+  // the Property page follows the agent's theme (Vici grey / Navy / Clean / Dark)
+  function propTheme() {
+    const h = document.documentElement.classList, dark = h.contains('th-dark');
+    const base = { accent: '#1652e6', accentDark: '#0f45c7', font: '"Segoe UI", Arial, sans-serif', radius: '12px', heading: 'Home value', up: '#137a32', down: '#c4252b', chart: '#1652e6' };
+    if (dark) return Object.assign(base, { leadBg: '#2a2310', leadBorder: '#6b5520', leadInk: '#f3e3b5', leadHead: '#f3d08a', ink: '#e6edf7', muted: '#8fa6c6', bg: '#0a1220', card: '#121c2e', border: '#24324a', tile: '#0e1727', up: '#4ade80', down: '#f87171', chart: '#5b8cff' });
+    if (h.contains('th-grey') || !h.contains('th-on')) return Object.assign(base, { ink: '#1d2530', muted: '#5b6675', bg: '#dcdcdc', card: '#ffffff', border: '#c4ccd6', tile: '#f1f4f8' });
+    if (h.contains('th-navy')) return Object.assign(base, { ink: '#1d2530', muted: '#5b6675', bg: '#eef2f8', card: '#ffffff', border: '#dde2e8', tile: '#eaf0fd' });
+    return Object.assign(base, { ink: '#1d2530', muted: '#6b7686', bg: '#f5f7fb', card: '#ffffff', border: '#dde2e8', tile: '#f3f6fa' });   // Clean
+  }
+
   // --- one site's screen ---
   const ICON = {
     home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
@@ -2073,8 +2090,13 @@ function readHomesPage(doc) {
     const st = c ? siteState(c, key) : { state: 'idle' };
     const openBtn = st.url ? `<a class="vp-open" href="${esc(st.url)}" target="_blank" rel="noopener">Open on ${esc(s.label)} ↗</a>` : '';
     const back = LAYOUT_ON ? '<button type="button" class="vp-back" data-vp-close="1">\u2715 Back to the call</button>' : '';
-    const top = `<div class="vp-top"><span class="vp-brand">${favicon(s, 24)}${esc(s.label)}</span><span class="addr">${esc(a.full)}</span><span class="sp"></span>
-      ${openBtn}${back}</div>`;
+    const goUrl = (x) => c ? x.url(a, c) : (x.key === 'zillow' ? x.url(a, {}) : google(x.domain, a));
+    const sitesOpen = `<span class="vp-sites-open">Open on ${SITES.map((x) => `<a class="vp-go" href="${esc(goUrl(x))}" target="_blank" rel="noopener">${favicon(x, 14)}${esc(x.label)} \u2197</a>`).join('')}</span>`;
+    const top = `<div class="vp-top"><span class="vp-brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg>Property</span><span class="addr">${esc(a.full)}</span><span class="sp"></span>
+      ${sitesOpen}${back}</div>`;
+    const more = `<div class="vp-card" style="margin-top:14px"><h3>Check another site</h3><div class="vp-more">${SITES.filter((x) => x.key !== 'zillow').map((x) =>
+      `<a href="${esc(goUrl(x))}" target="_blank" rel="noopener">${favicon(x, 24)}<div><b>${esc(x.label)}</b><span>${{ realtor: 'Opens this address in a new tab', homes: 'Open loans &amp; owner history · new tab', trulia: 'Neighborhood &amp; schools · new tab' }[x.key] || 'New tab'}</span></div></a>`).join('')}</div>
+      <div class="vp-note" style="margin:8px 0 0">These open the site itself in a normal browser tab, only when you click. Nothing runs in the background.</div></div>`;
     if (a.missing.length) return `<div class="vp-body"><div class="vp-msg">No property yet. The lead needs: ${esc(a.missing.join(', '))}.</div></div>`;
     const body = (h) => top + `<div class="vp-body">${h}</div>`;
     const msg = (t) => body(`<div class="vp-msg">${t}</div>`);
@@ -2089,7 +2111,7 @@ function readHomesPage(doc) {
         if (key === 'homes') return msg(`<div class="vp-wait"><span class="vp-spin"></span><div><b>Gathering information from Homes.com. Wait a second.</b>
           <div class="vp-wait-sub">Homes.com is being looked up in a background tab named <b>\u201cVici lookup\u201d</b>. It closes by itself when it's done (usually 5 to 20 seconds).</div></div></div>`);
         return msg('Looking up the property…');
-      case 'ok': return body((st.picked ? `<div class="vp-banner">${icon('pin')}<div><b>Showing a close match, not the exact lead address:</b> ${esc(nearLabel(st.picked))}. Confirm the address with the borrower.</div></div>` : '') + modelHTML(a, st.model, key));
+      case 'ok': return body((st.picked ? `<div class="vp-banner">${icon('pin')}<div><b>Showing a close match, not the exact lead address:</b> ${esc(nearLabel(st.picked))}. Confirm the address with the borrower.</div></div>` : '') + modelHTML(a, st.model, key) + more);
       case 'shared':
         return z.state === 'ok' ? body(`<div class="vp-note">Trulia uses the same property records as Zillow.</div>` + modelHTML(a, z.model, key))
           : msg('Couldn\'t read this home\'s details from Trulia right now.');
@@ -2111,7 +2133,7 @@ function readHomesPage(doc) {
           if (key === 'realtor') return fallback('no exact address match');
           return msg(`${esc(s.label)} has no exact match for this address, and no close matches in ${esc(a.state)} ${esc(a.zip)}. Check the spelling, city and ZIP.`);
         }
-        return msg(`${esc(s.label)} has no exact match for this address.
+        return msg(`No exact match for this address in Zillow's records.
           <div class="vp-near-h">Close matches in ${esc(a.state)} ${esc(a.zip)}. Click one to load it:</div>
           <div class="vp-near">${near.map((x, i) => `<button type="button" data-vp-near="${i}" data-vp-key="${key}">${icon('pin')}<span>${esc(nearLabel(x))}</span></button>`).join('')}</div>`);
       }
@@ -2156,7 +2178,7 @@ function readHomesPage(doc) {
     // last sale date/price from the price history when the site doesn't give them directly
     const lastSale = m.priceHistory.find((e) => /sold/i.test(e.event || ''));
     if (lastSale) m = Object.assign(m, { soldDate: m.soldDate || lastSale.date, soldPrice: isNum(m.soldPrice) ? m.soldPrice : lastSale.price });
-    const th = THEMES[key];
+    const th = propTheme();
     const est = m.estimate;
     const sinceBuy = est && m.soldPrice ? { amt: est - m.soldPrice, pct: (est - m.soldPrice) / m.soldPrice * 100 } : null;
     const mo = change(m.history, est, 30), yr = change(m.history, est, 365);
@@ -2319,14 +2341,13 @@ function readHomesPage(doc) {
     if (!tabBar || !document.body.contains(tabBar)) {
       tabBar = document.createElement('div');
       tabBar.id = 'vprop-tabbar';
-      SITES.forEach((s) => {
+      SITES.filter((s) => s.key === 'zillow').forEach((s) => {   // one "Property" tab (fed by Zillow's records)
         const t = document.createElement('span');
-        t.className = 'vprop-tab';
+        t.className = 'vprop-tab vprop-one';
         t.setAttribute('role', 'button');
         t.tabIndex = 0;
-        t.style.color = s.color;
-        t.innerHTML = `${favicon(s, 32)}<span class="lbl vp-sr">${esc(s.label)}</span><span class="dot"></span>`;
-        t.setAttribute('aria-label', s.label);
+        t.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-6h6v6"/></svg><span class="lbl">Property</span><span class="dot"></span>';
+        t.setAttribute('aria-label', 'Property');
         t.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleScreen(s.key); });
         t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleScreen(s.key); } });
         tabBar.appendChild(t);
@@ -2391,6 +2412,7 @@ function readHomesPage(doc) {
     const icon = Math.max(16, h - 6);   // icon fills the tab, 3px breathing room top and bottom
     tabBar.querySelectorAll('.vprop-tab').forEach((t) => {
       t.style.height = h + 'px';
+      if (t.classList.contains('vprop-one')) return;
       const img = t.querySelector('.vp-fav');
       if (img) { img.width = icon; img.height = icon; }
     });
@@ -2494,22 +2516,20 @@ function readHomesPage(doc) {
     if (!addTabs()) { if (card) card.style.display = 'none'; return; }
     const a = getAddress(), c = a.missing.length ? null : cache[a.full];
     renderCard(a, c);
-    SITES.forEach((s) => {
+    SITES.filter((s) => tabs[s.key]).forEach((s) => {
       const st = c ? siteState(c, s.key).state : 'idle';
       tabs[s.key].classList.toggle('ready', st === 'ok' || st === 'shared');
       tabs[s.key].classList.toggle('fail', ['blocked', 'nomatch', 'nosource', 'error', 'offline'].includes(st));
-      tabs[s.key].title = `${s.label}: ` + ({ ok: 'facts ready', shared: 'facts ready', loading: 'loading…', blocked: 'blocked by the site – open it directly',
+      tabs[s.key].title = `Property: ` + ({ ok: 'facts ready', shared: 'facts ready', loading: 'loading…', blocked: 'blocked by the site – open it directly',
         nomatch: 'no exact match', offline: 'site didn\'t answer – trying again', nosource: 'open on the site', error: 'couldn\'t load', idle: 'waiting for a lead address' }[st] || st);
     });
-    // Homes.com starts on its own as soon as a call's address is looked up (in a background tab)
-    if (c && c.done && siteState(c, 'homes').state === 'idle') loadSite(a, c, 'homes');
     if (c && c.done && !c.retrying && (c.zFail || c.rFail || siteState(c, 'homes').state === 'error')) scheduleRetry(a, c);
     if (!screen || !openKey) return;
     const st = c ? siteState(c, openKey) : {};
-    const key = openKey + '|' + a.full + '|' + st.state + '|' + (c ? SITES.map((x) => siteState(c, x.key).state).join(',') : '') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
+    const key = document.documentElement.className + '|' + openKey + '|' + a.full + '|' + st.state + '|' + (c ? SITES.map((x) => siteState(c, x.key).state).join(',') : '') + '|' + byLabel(/^Loan\s*Amount/i) + '|' + byLabel(/^Value\s*:?$/i);
     if (key === lastScreenKey) return;
     lastScreenKey = key;
-    const th = THEMES[openKey];
+    const th = propTheme();
     Object.keys(th).forEach((k) => { if (typeof th[k] === 'string' && !/Url|heading/.test(k)) screen.style.setProperty('--' + k, th[k]); });
     screen.innerHTML = screenHTML(a, c, openKey);
     photoIndex = 0;
@@ -3508,7 +3528,7 @@ function readHomesPage(doc) {
   //  At-a-glance card in the empty grey area under Call Notes on the main screen
   // =====================================================================
   let card = null, lastCardKey = '';
-  const CARD_ORDER = ['zillow', 'trulia', 'realtor', 'homes'];
+  const CARD_ORDER = ['zillow'];
   function cardAnchor() {
     const notes = field('call_notes') || [...document.querySelectorAll('textarea')].filter((t) => !t.closest('#vprop-screen, #vprop-card') && onScreen(t)).pop();
     return notes || field('address1');
@@ -3540,7 +3560,7 @@ function readHomesPage(doc) {
       const cands = [{ date: m.soldDate, price: m.soldPrice }].concat((m.priceHistory || []).filter((x) => /sold/i.test(x.event || '')));
       for (const x of cands) { const t = when(x.date); if (t !== null && t > soldT) { soldT = t; soldDate = x.date; soldPrice = isNum(x.price) ? x.price : null; } }
     }
-    const others = ms.filter((m) => isNum(m.estimate)).map((m) =>
+    const others = [].filter((m) => isNum(m.estimate)).map((m) =>
       `<button type="button" class="vc-site" data-vc-open="${m.key}" title="Open the ${esc(label(m.key))} tab">${favicon(SITES.find((x) => x.key === m.key), 14)}${kMoney(m.estimate)}</button>`).join('');
 
     const loan = parseMoney(byLabel(/^Loan\s*Amount/i)), lv = parseRange(byLabel(/^Value\s*:?$/i));
@@ -3558,11 +3578,11 @@ function readHomesPage(doc) {
     const picked = CARD_ORDER.map((k) => st(k).picked).find(Boolean);
     const partial = CARD_ORDER.filter((k) => !ok.includes(k) && (st(k).state === 'loading'));
 
-    return head(`<span class="vc-hint">Click a site for the full page</span>`) +
+    return head(`<span class="vc-hint">Click for the full Property page</span>`) +
       (picked ? `<div class="vc-warn">Close match, not the exact lead address: <b>${esc(nearLabel(picked))}</b>. Confirm the address with the borrower.</div>` : '') +
       `<div class="vc-row">
         <div class="vc-hero" data-vc-open="${main.key}" title="Open the ${esc(label(main.key))} tab">
-          <div class="vc-k">${esc(label(main.key))} estimate</div>
+          <div class="vc-k">Estimated value</div>
           <div class="vc-big">${esc(money(est) || '—')}</div>
           <div class="vc-sites">${others}${partial.length ? `<span class="vc-sub">${partial.map(label).join(', ')} loading…</span>` : ''}</div>
         </div>
@@ -3570,8 +3590,7 @@ function readHomesPage(doc) {
           ${tile('Lead value', vsLead, vsSub)}
           ${tile('Lead loan / LTV', loan && isNum(est) ? `${kMoney(loan)} · <span class="${ltvCls(loan)}">${(loan / est * 100).toFixed(1)}%</span>` : (loan ? kMoney(loan) : ''), loan && isNum(est) ? `Equity est. ${eq(loan)}` : '')}
           ${tile('Last sold', esc(day(soldDate) || ''), [isNum(soldPrice) ? `for ${kMoney(soldPrice)}` : '', ownedFor(soldDate)].filter(Boolean).join(' · '))}
-          ${tile('Open loan on record', openLoan ? `${kMoney(openLoan.amount)}${isNum(est) ? ` · <span class="${ltvCls(openLoan.amount)}">${(openLoan.amount / est * 100).toFixed(1)}%</span>` : ''}` : '',
-            openLoan ? `${esc(openLoan.date)}, original amount${isNum(est) ? ` · Equity est. ${eq(openLoan.amount)}` : ''}` : (homes ? 'None recorded' : 'Open the Homes.com tab to check'))}
+          ${tile('Rent estimate', esc(pick('rent') || ''), main.hoa ? 'HOA ' + esc(main.hoa) : esc(pick('lot') ? 'Lot ' + pick('lot') : ''))}
           ${tile('Home', esc(bb), esc([pick('yearBuilt') ? 'Built ' + pick('yearBuilt') : '', pick('type')].filter(Boolean).join(' · ')))}
           ${tile('Status', esc(pick('status') || ''), esc([pick('county'), main.listPrice ? 'List ' + kMoney(main.listPrice) : ''].filter(Boolean).join(' · ')))}
         </div>
