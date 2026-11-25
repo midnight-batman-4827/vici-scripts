@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      13.9
+// @version      14.0
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1566,9 +1566,36 @@ function readHomesPage(doc) {
         #vl-hk.on{background:linear-gradient(#2fbf4f,#159a35)} #vl-hk.on i{background:#d9ffd9}
         #vl-livebadge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font:700 11px "Segoe UI",Arial;letter-spacing:.04em;white-space:nowrap}
         #vl-status{visibility:hidden!important}
-        /* Transfer - Conf panel: just under the card + pitch sheet, lined up with the grid */
-        #TransferMain{left:${L.card[0]}px!important;top:${L.pitch[1] + L.pitch[3] + 12}px!important}
-        #TransferMain>table{width:${L.pitch[0] + L.pitch[2] - L.card[0]}px!important;border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+        /* Transfer - Conf: Vici's panel stays (Vici opens/closes it) but is see-through; our card shows instead */
+        #TransferMain{left:${L.card[0]}px!important;top:${L.pitch[1] + L.pitch[3] + 12}px!important;opacity:0!important;pointer-events:none!important}
+        #vl-xfer{width:${L.pitch[0] + L.pitch[2] - L.card[0]}px;background:#fff;border:1px solid #dde2e8;border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,.08);
+          padding:10px 14px 12px;font:12px "Segoe UI",Arial,sans-serif;color:#1d2530;box-sizing:border-box;display:none}
+        #vl-xfer.open{display:block}
+        #vl-xfer *{box-sizing:border-box}
+        #vl-xfer h3{margin:0 0 9px;font:700 11px "Segoe UI",Arial;letter-spacing:.06em;color:#4a5563;display:flex;align-items:center;gap:8px}
+        #vl-xfer h3 svg{width:15px;height:15px;color:#6b3fb5}
+        #vl-xfer h3 .meta{margin-left:auto;font-weight:400;letter-spacing:0;color:#5b6675;font-size:11.5px;display:flex;align-items:center;gap:6px}
+        #vl-xfer h3 .meta input{width:70px;height:22px;border:0;background:transparent;font:600 12px "Segoe UI",Arial;color:#1d2530;padding:0}
+        #vl-xfer .row{display:flex;gap:18px;align-items:stretch}
+        #vl-xfer .grp{display:flex;flex-direction:column;gap:6px;min-width:0}
+        #vl-xfer .lbl{font-size:10.5px;color:#5b6675;font-weight:600}
+        #vl-xfer .line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+        #vl-xfer select,#vl-xfer input[type=text]{height:30px;border:1px solid #cdd4dd;border-radius:7px;padding:0 9px;font:13px "Segoe UI",Arial;background:#fff;color:#1d2530}
+        #vl-xfer .grpslot{flex:1;min-width:0}#vl-xfer .grpslot select{width:100%}
+        #vl-xfer #xfernumber{width:220px}
+        #vl-xfer .chk{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#2b3a55}
+        #vl-xfer .chk input{width:15px;height:15px;margin:0}
+        #vl-xfer .agents a{color:#2563eb;font:600 12px "Segoe UI",Arial;text-decoration:none}
+        #vl-xfer .div{width:1px;background:#e3e7ec}
+        #vl-xfer .b{height:30px;display:inline-flex;align-items:center;gap:7px;padding:0 12px;border-radius:8px;font:600 12px "Segoe UI",Arial;border:1px solid transparent;
+          white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.12);cursor:pointer;user-select:none}
+        #vl-xfer .b svg{width:14px;height:14px}
+        #vl-xfer .pri{background:#6b3fb5;color:#fff}#vl-xfer .sec{background:#f3ecff;color:#6b3fb5;border-color:#d4c3f2}
+        #vl-xfer .neu{background:#fff;color:#1d2530;border-color:#c4ccd6}
+        #vl-xfer .red{background:#c4252b;color:#fff}#vl-xfer .redo{background:#fff;color:#c4252b;border-color:#f0b4b6}
+        #vl-xfer .amb{background:#fff4dd;color:#7a4b00;border-color:#f0d39a}
+        #vl-xfer .b.dis{opacity:.4;box-shadow:none;filter:grayscale(1);cursor:default}
+        #vl-xfer .b.gone{display:none}
         #AgentViewSpan{overflow:auto!important;scrollbar-width:none!important}#AgentViewSpan::-webkit-scrollbar{display:none}   /* no sliders; wheel still scrolls */
         #vl-groups a[onclick*="OpeNGrouPSelectioN"]{display:none!important}   /* GROUPS hidden, LOGOUT stays */
         #dialableleadsspan,#vl-custtime{font-size:13px!important;line-height:18px}#dialableleadsspan *{font-size:13px!important}
@@ -1663,6 +1690,7 @@ function readHomesPage(doc) {
     }
     liveBadge();
     modernButtons();
+    xferCard();
     takeover();
     watchTakeover();
     hotKeysSwitch();
@@ -1764,7 +1792,7 @@ function readHomesPage(doc) {
       // only Vici's own boxes matter (our pieces restyle themselves all the time)
       if (!recs.some((r) => !/^(vl-|vprop)/.test(r.target.id || '') && !(r.target.closest && r.target.closest('[id^="vl-"],[id^="vprop"]')))) return;
       if (tkQueued) return; tkQueued = true;
-      queueMicrotask(() => { tkQueued = false; try { takeover(); scriptCover(); } catch (e) {} });
+      queueMicrotask(() => { tkQueued = false; try { takeover(); scriptCover(); xferCard(); } catch (e) {} });
     });
     tkObs.observe(document.body, { attributes: true, attributeFilter: ['style'], subtree: true });
   }
@@ -1774,6 +1802,46 @@ function readHomesPage(doc) {
     const up = ['ScriptPanel', 'Script2Panel'].some((id) => { const e = byId(id); return e && getComputedStyle(e).visibility === 'visible'; });
     if (!up) return;
     ['vprop-card', 'vl-pitch'].forEach((id) => { const e = byId(id); if (e) e.style.display = 'none'; });
+  }
+
+
+  // ---------- Transfer - Conference as a modern card. Vici's real controls are moved in (same ids, still in
+  // Vici's form) or mirrored (same available/greyed state; a click goes to Vici's own button). ----------
+  const XB = [
+    ['LocalCloser', 'LOCAL CLOSER', 'sec', 'g1'],
+    ['DialBlindTransfer', 'BLIND TRANSFER', 'pri', 'g2', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h14l-4-4M18 12l-4 4"/></svg>'],
+    ['DialWithCustomer', 'DIAL WITH CUSTOMER', 'sec', 'g2', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/></svg>'],
+    ['ParkCustomerDial', 'PARK CUSTOMER DIAL', 'neu', 'g2'], ['PresetPullDown', 'PRESETS', 'neu', 'g2'], ['DialBlindVMail', 'VOICEMAIL', 'neu', 'g2'],
+    ['Leave3WayCall', 'LEAVE 3-WAY CALL', 'amb', 'g3'], ['ParkXferLine', 'PARK TRANSFER LINE', 'neu', 'g3'],
+    ['HangupXferLine', 'HANG UP TRANSFER LINE', 'redo', 'g3'], ['HangupBothLines', 'HANG UP BOTH LINES', 'red', 'g3']];
+  function xferCard() {
+    const tm = byId('TransferMain'); if (!tm) return;
+    const x = box('vl-xfer', L.card[0], L.pitch[1] + L.pitch[3] + 12, 'z-index:46');
+    if (!x.childElementCount) {
+      x.innerHTML = `<h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>TRANSFER · CONFERENCE
+          <span class="meta">Seconds on transfer line <span data-m="xferlength"></span> · Channel <span data-m="xferchannel"></span></span></h3>
+        <div class="row">
+          <div class="grp" style="flex:1.2"><span class="lbl">Send the call to a group</span><div class="line g1"><span class="grpslot" data-m="XfeRGrouPLisT"></span></div>
+            <span class="lbl" style="margin-top:4px">Or dial a number</span>
+            <div class="line"><span data-m="xfernumber"></span><span class="agents" data-m="agentdirectlink"></span>
+              <label class="chk"><span data-m="consultativexfer"></span>Consultative</label><label class="chk"><span data-m="xferoverride"></span>Dial override</label></div></div>
+          <div class="div"></div>
+          <div class="grp" style="flex:1"><span class="lbl">Start the transfer</span><div class="line g2"></div></div>
+          <div class="div"></div>
+          <div class="grp" style="flex:.75"><span class="lbl">Once connected</span><div class="line g3"></div></div>
+        </div>`;
+      x.querySelectorAll('[data-m]').forEach((slot) => move(byId(slot.dataset.m), slot));   // Vici's own boxes, links and checkboxes
+      XB.forEach(([id, label, cls, g, ic]) => x.querySelector('.' + g).insertAdjacentHTML('beforeend', `<span class="b ${cls}" data-x="${id}">${ic || ''}${label}</span>`));
+      x.addEventListener('click', (e) => { const b = e.target.closest('[data-x]'); if (!b || b.classList.contains('dis')) return; e.preventDefault();
+        const v = viciBtn(byId(b.dataset.x)); clickVici(v && v.a); setTimeout(xferCard, 150); });
+    }
+    // open/closed exactly when Vici opens/closes its panel
+    x.classList.toggle('open', tm.style.visibility === 'visible' && !document.documentElement.classList.contains('vl-takeover'));
+    x.querySelectorAll('[data-x]').forEach((b) => {
+      const el = byId(b.dataset.x), v = viciBtn(el);
+      b.classList.toggle('gone', !el || (el.style && el.style.visibility === 'hidden'));   // e.g. Park Transfer Line when Vici hides it
+      b.classList.toggle('dis', !v || !v.on);
+    });
   }
 
   // ---------- Live-call light as a badge (Vici's own picture stays, hidden; it tells us the state) ----------
