@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.7
+// @version      15.8
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -2913,6 +2913,9 @@ function readHomesPage(doc) {
     topRight();
     logo();
     scrollLock();
+    // plays once the screen is really up (after Vici's own login boxes, e.g. picking in-groups, have closed)
+    if (!introDone && performance.now() > 120000) introDone = true;
+    if (!introDone && !document.documentElement.classList.contains('vl-takeover') && byId('vl-team') && byId('vl-script') && byId('vl-pitch')) { introDone = true; try { playIntro(); } catch (e) {} }
   }
 
 
@@ -3194,11 +3197,13 @@ function readHomesPage(doc) {
     w.innerHTML = `<button type="button" class="tb" title="Theme and screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 000 18z" fill="currentColor"/></svg></button>
       <div class="menu"><b>THEME</b>${THEMES_UI.map(([k, l, c]) => `<div data-th="${k}"><i style="background:${c}"></i>${l}</div>`).join('')}
         <b class="sep">SCREEN</b><div data-vw="agency" class="${view === 'agency' ? 'on' : ''}"><i style="background:linear-gradient(135deg,#1652e6 50%,#fff 50%)"></i>Agency View</div>
-        <div data-vw="classic" class="${view === 'classic' ? 'on' : ''}"><i style="background:#cccccc"></i>Classic Vici</div><p class="vn"></p></div>`;
+        <div data-vw="classic" class="${view === 'classic' ? 'on' : ''}"><i style="background:#cccccc"></i>Classic Vici</div><p class="vn"></p>
+        <b class="sep">OPENING ANIMATION</b><div data-intro="1" class="${GM_getValue('vpIntro', true) ? 'on' : ''}"><i style="background:repeating-linear-gradient(90deg,#151515 0 4px,#f4f1ea 4px 6px)"></i>Play when I log in</div></div>`;
     w.querySelector('.tb').addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); w.classList.toggle('open'); });
     w.querySelector('.menu').addEventListener('click', (e) => {
       e.stopPropagation();
-      const t = e.target.closest('[data-th]'), v = e.target.closest('[data-vw]');
+      const t = e.target.closest('[data-th]'), v = e.target.closest('[data-vw]'), io = e.target.closest('[data-intro]');
+      if (io) { const on = !GM_getValue('vpIntro', true); GM_setValue('vpIntro', on); io.classList.toggle('on', on); }
       if (t) { GM_setValue('vpTheme', t.dataset.th); applyTheme(t.dataset.th); w.classList.remove('open'); }
       if (v) {
         GM_setValue('vpView', v.dataset.vw);
@@ -3211,6 +3216,95 @@ function readHomesPage(doc) {
     document.addEventListener('click', (e) => { if (!e.target.closest('#vl-theme')) w.classList.remove('open'); });
     applyTheme(GM_getValue('vpTheme', 'clean'));
     return w;
+  }
+
+  // ---------- Opening animation (once per login; click or any key skips; Off in the half-moon menu) ----------
+  // Builders sketch each piece of the screen where it sits, a pixel loader fills, then the screen fades in.
+  // It's only a cover: Vici keeps loading and working underneath the whole time.
+  let introDone = false;
+  function playIntro() {
+    if (!GM_getValue('vpIntro', true)) return;
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const dark = document.documentElement.classList.contains('th-dark');
+    const secs = [...document.querySelectorAll('#vl-form .sec')];
+    const secName = (e) => (e.querySelector('h3') || e).textContent.trim().toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
+    const pc = byId('vprop-card');
+    const P = [[byId('vl-col'), 'Buttons', '#7c3aed']].concat(secs.map((e, i) => [e, secName(e), ['#2563eb', '#16a34a', '#0891b2', '#d97706'][i % 4]]),
+      [[byId('vl-pitch'), 'Pitch sheet', '#e3262d'], [byId('vl-script'), 'Script', '#db2777'],
+       [pc && pc.style.display !== 'none' ? pc : null, 'Property at a glance', '#0f766e'], [byId('vl-team'), 'Agents + Hot keys', '#4f46e5']])
+      .map(([el, label, c]) => ({ el, label, c, r: el && el.getBoundingClientRect() })).filter((x) => x.r && x.r.width > 20 && x.r.height > 20);
+    if (!P.length) return;
+    const paperC = dark ? '#0d1626' : '#f4f1ea', ink = dark ? '#e6edf7' : '#151515', off = dark ? '#24324a' : '#e2ddd2', dotC = dark ? '#2b3b57' : '#b9b2a3';
+    const ov = document.createElement('div');
+    ov.id = 'vl-intro';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483500;cursor:pointer;font-family:"Segoe UI",Arial,sans-serif';
+    ov.innerHTML = `<style>
+      #vl-intro .pp{position:absolute;inset:0;background:${paperC};transition:opacity .7s ease}
+      #vl-intro .dt{position:absolute;inset:0;opacity:0;transition:opacity .5s;background-image:radial-gradient(${dotC} 1.1px,transparent 1.2px);background-size:24px 24px}
+      #vl-intro .wf{position:absolute;border:1.5px dashed var(--c);border-radius:8px;background:color-mix(in srgb,var(--c) 7%,transparent);width:0;height:0;opacity:0}
+      #vl-intro .wf .tg{position:absolute;left:-1px;top:-20px;background:var(--c);color:#fff;font:700 11px "Segoe UI",Arial;padding:2px 7px;border-radius:5px 5px 5px 0;white-space:nowrap}
+      #vl-intro .wf .sz{position:absolute;right:-1px;bottom:-20px;background:var(--c);color:#fff;font:600 10px Consolas,monospace;padding:2px 6px;border-radius:0 0 5px 5px;opacity:0;transition:opacity .2s}
+      #vl-intro .cu{position:absolute;z-index:3;pointer-events:none}
+      #vl-intro .cu svg{width:18px;height:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))}
+      #vl-intro .cu span{position:absolute;left:14px;top:14px;background:var(--c);color:#fff;font:700 10.5px "Segoe UI",Arial;padding:2px 7px;border-radius:999px;white-space:nowrap}
+      #vl-intro .ld{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:0;transition:opacity .3s}
+      #vl-intro .gd{display:grid;grid-template-columns:repeat(14,14px);gap:3px}
+      #vl-intro .gd i{width:14px;height:14px;background:${off}}#vl-intro .gd i.on{background:${ink}}
+      #vl-intro .rw{display:flex;justify-content:space-between;margin-top:10px;font:700 10px Consolas,monospace;letter-spacing:.12em;color:${ink};border-top:1px solid ${ink};padding-top:5px}
+      #vl-intro small{display:block;margin-top:4px;font:10px Consolas,monospace;color:#8a8478;letter-spacing:.08em}
+      #vl-intro .ab{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);background:#151515;color:#fff;border-radius:999px;padding:6px 14px 6px 8px;display:flex;align-items:center;gap:10px;font:600 11px "Segoe UI",Arial;opacity:0;transition:opacity .3s}
+      #vl-intro .ab .ds{display:flex}#vl-intro .ab .ds i{width:16px;height:16px;border-radius:50%;border:2px solid #151515;margin-left:-5px}
+      #vl-intro .ab .br{width:160px;height:3px;background:#333;border-radius:3px;overflow:hidden}#vl-intro .ab .br b{display:block;height:100%;width:0;background:#fff;transition:width .2s}
+      #vl-intro .sk{position:absolute;right:16px;bottom:18px;font:11px "Segoe UI",Arial;color:#8a8478}
+      </style><div class="pp"></div><div class="dt"></div>
+      <div class="ld"><div class="gd">${'<i></i>'.repeat(70)}</div><div class="rw"><span>BUILDING YOUR SCREEN</span><span class="pc">0%</span></div><small>MORTGAGEUSA · AGENCY VIEW</small></div>
+      <div class="ab"><div class="ds">${P.slice(0, 6).map((x) => `<i style="background:${x.c}"></i>`).join('')}</div><span>${P.length} builders</span><div class="br"><b></b></div><span class="ct">0 / ${P.length}</span></div>
+      <div class="sk">Click or press any key to skip</div>`;
+    document.body.appendChild(ov);
+    let live = true;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const ease = (t) => 1 - Math.pow(1 - t, 3);
+    const anim = (ms, fn) => new Promise((res) => { const t0 = performance.now(); const st = (t) => { if (!live) return res(); const k = Math.min(1, (t - t0) / ms); fn(ease(k)); if (k < 1) requestAnimationFrame(st); else res(); }; requestAnimationFrame(st); });
+    const end = () => { if (!live) return; live = false; window.removeEventListener('keydown', end, true); ov.remove(); };
+    ov.addEventListener('click', end);
+    window.addEventListener('keydown', end, true);
+    setTimeout(end, 9000);   // never stays up, whatever happens
+    (async () => {
+      await sleep(250); if (!live) return;
+      ov.querySelector('.ab').style.opacity = 1;
+      let done = 0;
+      await Promise.all(P.map((x, i) => (async () => {
+        await sleep(i * 170); if (!live) return;
+        const { left: X, top: Y, width: W, height: H } = x.r;
+        const wf = document.createElement('div'); wf.className = 'wf'; wf.style.setProperty('--c', x.c);
+        wf.innerHTML = `<span class="tg"></span><span class="sz">${Math.round(W)} × ${Math.round(H)}</span>`; wf.querySelector('.tg').textContent = x.label;
+        Object.assign(wf.style, { left: X + 'px', top: Y + 'px' }); ov.appendChild(wf);
+        const cu = document.createElement('div'); cu.className = 'cu'; cu.style.setProperty('--c', x.c);
+        cu.innerHTML = `<svg viewBox="0 0 24 24"><path d="M3 2l7 19 2.5-7.5L20 11z" fill="${x.c}" stroke="#fff" stroke-width="1.5"/></svg><span></span>`; cu.querySelector('span').textContent = x.label;
+        ov.appendChild(cu);
+        const sx = i % 2 ? window.innerWidth + 60 : -80, sy = 120 + (i * 97) % Math.max(200, window.innerHeight - 200);
+        await anim(420, (k) => { cu.style.left = sx + (X - sx) * k + 'px'; cu.style.top = sy + (Y - sy) * k + 'px'; });
+        wf.style.opacity = 1;
+        await anim(520, (k) => { wf.style.width = W * k + 'px'; wf.style.height = H * k + 'px'; cu.style.left = X + W * k - 4 + 'px'; cu.style.top = Y + H * k - 4 + 'px'; });
+        wf.querySelector('.sz').style.opacity = 1;
+        done++; ov.querySelector('.ct').textContent = done + ' / ' + P.length; ov.querySelector('.br b').style.width = done / P.length * 100 + '%';
+        await sleep(180); cu.style.transition = 'opacity .3s'; cu.style.opacity = 0;
+      })()));
+      if (!live) return;
+      await sleep(200); if (!live) return;
+      ov.querySelectorAll('.wf').forEach((e) => { e.style.transition = 'opacity .4s'; e.style.opacity = .35; });
+      ov.querySelector('.ab').style.opacity = 0; ov.querySelector('.dt').style.opacity = .7; ov.querySelector('.ld').style.opacity = 1;
+      const cells = [...ov.querySelectorAll('.gd i')], pcT = ov.querySelector('.pc');
+      await anim(900, (k) => { const n = Math.round(k * cells.length); cells.forEach((c, j) => c.classList.toggle('on', j < n)); pcT.textContent = Math.round(k * 100) + '%'; });
+      if (!live) return;
+      await sleep(150); if (!live) return;
+      // the real screen shows through, piece by piece
+      ov.style.pointerEvents = 'none';
+      ov.querySelector('.ld').style.opacity = 0; ov.querySelector('.sk').style.opacity = 0; ov.querySelector('.dt').style.opacity = 0;
+      ov.querySelectorAll('.wf').forEach((e, j) => setTimeout(() => { e.style.opacity = 0; }, j * 70));
+      ov.querySelector('.pp').style.opacity = 0;
+      await sleep(900); end();
+    })();
   }
 
   // ---------- MortgageUSA logo, top middle (the same picture the Vici script uses) ----------
