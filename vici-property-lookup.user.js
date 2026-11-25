@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      13.8
+// @version      13.9
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1566,6 +1566,9 @@ function readHomesPage(doc) {
         #vl-hk.on{background:linear-gradient(#2fbf4f,#159a35)} #vl-hk.on i{background:#d9ffd9}
         #vl-livebadge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;font:700 11px "Segoe UI",Arial;letter-spacing:.04em;white-space:nowrap}
         #vl-status{visibility:hidden!important}
+        /* Transfer - Conf panel: just under the card + pitch sheet, lined up with the grid */
+        #TransferMain{left:${L.card[0]}px!important;top:${L.pitch[1] + L.pitch[3] + 12}px!important}
+        #TransferMain>table{width:${L.pitch[0] + L.pitch[2] - L.card[0]}px!important;border-radius:9px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
         #AgentViewSpan{overflow:auto!important;scrollbar-width:none!important}#AgentViewSpan::-webkit-scrollbar{display:none}   /* no sliders; wheel still scrolls */
         #vl-groups a[onclick*="OpeNGrouPSelectioN"]{display:none!important}   /* GROUPS hidden, LOGOUT stays */
         #dialableleadsspan,#vl-custtime{font-size:13px!important;line-height:18px}#dialableleadsspan *{font-size:13px!important}
