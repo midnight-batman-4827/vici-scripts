@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      15.0
+// @version      15.1
 // @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -229,7 +229,7 @@ function readHomesPage(doc) {
   //  and modern lists, settings forms, tabs, Reports cards, script editor and Admin tiles.
   //  Vici's own links, fields and buttons are kept and only restyled/moved: nothing is sent differently.
   // =====================================================================
-  const ADMIN_CSS = `
+  function adminCSS() { return `
   html.mu-adm,html.mu-adm body{background:#eef1f5!important}
   html.mu-adm body>center>table{margin:0!important;background:transparent!important;width:100%!important;min-height:100vh}
   html.mu-adm .mu-side{background:#0f2747!important;width:230px!important;min-width:230px;padding:0 12px 20px!important;vertical-align:top}
@@ -390,7 +390,7 @@ function readHomesPage(doc) {
   html.mu-adm .mu-ico{width:34px;height:34px;border-radius:9px;background:#eef3ff;display:flex;align-items:center;justify-content:center;flex:none}
   html.mu-adm .mu-ico img{width:22px!important;height:22px!important;opacity:.85}
   html.mu-adm table.mu-grid4{width:calc(100% - 32px)!important;margin:6px 16px 30px!important;table-layout:fixed}
-  html.mu-adm td.mu-col4{padding:0 6px!important;vertical-align:top}`;
+  html.mu-adm td.mu-col4{padding:0 6px!important;vertical-align:top}`; }
 
   function adminUI() {
     const top = document.querySelector('body>center>table');
@@ -406,7 +406,7 @@ function readHomesPage(doc) {
     }
 
     document.documentElement.classList.add('mu-adm');
-    const st = document.createElement('style'); st.id = 'mu-adm-style'; st.textContent = ADMIN_CSS;
+    const st = document.createElement('style'); st.id = 'mu-adm-style'; st.textContent = adminCSS();
     document.head.appendChild(st);
 
     // ---------- frame: sidebar, top bar, link row, footer ----------
