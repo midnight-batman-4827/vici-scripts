@@ -27,9 +27,9 @@ setHeaderRules();
 // The flow only accepts requests signed in with a mortgageusa.com Microsoft account ("Any user in my tenant"),
 // so these three values aren't secrets. IT can also set them through Edge policy (managed storage).
 const TL = {
-  tenant: '',   // Directory (tenant) ID
-  client: '',   // Application (client) ID of the "Vici Pitch Sheets" app registration
-  flow: ''      // HTTP URL of the Pitch Sheet to Team Lead flow
+  tenant: '8d281e2d-be1d-4813-b672-1b92d92dcafa',   // Directory (tenant) ID
+  client: '53817619-ee6f-4727-9451-a930a5cab65e',   // Application (client) ID of the "Vici Pitch Sheets" app registration
+  flow: 'https://default8d281e2dbe1d4813b6721b92d92dca.fa.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/29/workflows/6d0e385d3ff542388bb4ed7dd1c62a84/triggers/manual/paths/invoke?api-version=1'   // Pitch Sheet to Team Lead flow (Any user in my tenant)
 };
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function tlConfig() {

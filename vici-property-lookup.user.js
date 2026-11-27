@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      17.6
+// @version      17.7
 // @description  PitchPoint (test channel): MortgageUSA's agent screen, pitch sheet and property facts for Vici
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -2412,11 +2412,11 @@ function readHomesPage(doc) {
       els.filter((e) => isTab(e, /^SCRIPT$|tab_script/i)).pop() || null;
   }
 
-  // ---------- UWM Pricing + HouseCanary tabs: each opens the site in its own Edge tab (they can't run inside Vici)
+  // ---------- UWM Pricing + Home Value tabs: each opens the site in its own Edge tab (they can't run inside Vici)
   // and hands the agent the lead's details to paste. Nothing logs in or reads those sites. ----------
   const EXT_SITES = {
-    uwm: { label: 'UWM Pricing', title: 'UWM Easy Qualifier', domain: 'uwm.com', url: 'https://ease.uwm.com/', go: 'Open Easy Qualifier' },
-    hc: { label: 'HouseCanary', title: 'HouseCanary', domain: 'housecanary.com', url: 'https://pexp.housecanary.com/', go: 'Open in HouseCanary' }
+    uwm: { label: 'UWM Pricing', title: 'UWM Easy Qualifier', domain: 'uwm.com', url: 'https://easyqualifier.uwm.com/', go: 'Open Easy Qualifier' },
+    hc: { label: 'Home Value', title: 'UWM Home Value Estimator', domain: 'uwm.com', url: 'https://www.uwm.com/dashboard?tools-resources=hve', go: 'Open Home Value Estimator' }
   };
   function leadFacts() {
     const ps = byId('vl-pitch');
@@ -2458,7 +2458,7 @@ function readHomesPage(doc) {
       const ok = f.address && copyText(f.address);
       m.innerHTML = `<div class="hd"><b>${favicon(x, 16)}${x.title}</b><a class="go" href="${x.url}" target="_blank" rel="noopener">${x.go} ↗</a></div>
         <div class="bd"><label>PROPERTY</label>${f.address ? `<div class="addr" data-copy="${e2(f.address)}"><span>${e2(f.address)}</span><em>${ok ? 'Copied ✓' : 'Click to copy'}</em></div>` : '<div class="empty">No property address on this lead yet.</div>'}
-        <p class="tip">Opens HouseCanary in a new tab. Paste the address into its search.</p></div>`;
+        <p class="tip">Opens UWM's Home Value Estimator in a new tab. Paste the address into it.</p></div>`;
     } else {
       const all = f.items.map(([l, v]) => l + ': ' + v).join('\n');
       m.innerHTML = `<div class="hd"><b>${favicon(x, 16)}${x.title}</b><a class="go" href="${x.url}" target="_blank" rel="noopener">${x.go} ↗</a></div>
@@ -2495,7 +2495,7 @@ function readHomesPage(doc) {
         tabBar.appendChild(t);
         tabs[s.key] = t;
       });
-      extTabs(tabBar);   // UWM Pricing + HouseCanary
+      extTabs(tabBar);   // UWM Pricing + UWM Home Value Estimator
       document.body.appendChild(tabBar);
       // clicking any of Vici's own tabs (MAIN / SCRIPT / SCRIPT 2) closes the site screen
       document.addEventListener('click', (e) => {
@@ -3796,7 +3796,7 @@ function readHomesPage(doc) {
   // ---------- Terms of Use, Privacy Policy and Disclaimer: built in (works offline and if GitHub is private).
   // Terms + Disclaimer are accepted once per PC; any change bumps LEGAL_VER so everyone accepts again.
   // All three open any time from the half-moon menu → ABOUT. ----------
-  const LEGAL_VER = '2026-11-27';
+  const LEGAL_VER = '2026-11-27b';   // bumped: everyone accepts the updated terms once
   let discAsked = false;
   const LEGAL = {
     terms: ['Terms of Use', 'PitchPoint is an internal tool of MTGUSA, LLC dba MortgageUSA ("MortgageUSA") for its VICIdial system. By using it you agree to these terms.', [
@@ -3807,7 +3807,8 @@ function readHomesPage(doc) {
       ['5. Monitoring', 'Use of PitchPoint, including sign-ins and pitch sheets sent, may be logged and reviewed by MortgageUSA.'],
       ['6. Changes', 'MortgageUSA may change, suspend or remove PitchPoint or any feature at any time. If these terms change, you\'ll be asked to accept them again.'],
       ['7. Disclaimer', 'PitchPoint is provided under the Disclaimer, which is part of these terms.'],
-      ['8. Problems', 'Report errors, suspected misuse, or data sent to the wrong person to your manager right away.']]],
+      ['8. Problems', 'Report errors, suspected misuse, or data sent to the wrong person to your manager right away.'],
+      ['9. Definitions', '"Author(s)", wherever used in these terms, the Privacy Policy and the Disclaimer, means Gorgees Hanna and MTGUSA, LLC dba MortgageUSA.']]],
     privacy: ['Privacy Policy', 'PitchPoint is an internal tool for MortgageUSA employees. It runs only on MortgageUSA\'s VICIdial pages (mtgusa.talkitpro.com) and, as an optional helper, on www.homes.com.', [
       ['What it reads', 'The lead open on the VICIdial agent screen (name, phone, property address and loan fields); what you type into the pitch sheet and disposition screen; your VICIdial user name and ID (used only on screen).'],
       ['Property lookups', 'The lead\'s property address is sent to Zillow (and Realtor.com\'s and Move\'s public address services) to look up and match public property details. Only the address is sent.'],
@@ -3815,7 +3816,7 @@ function readHomesPage(doc) {
       ['Microsoft sign-in', 'You sign in in Microsoft\'s own window; PitchPoint never sees or stores your password. Microsoft issues a sign-in token (about an hour) that\'s kept only in the browser\'s memory, inside the extension, and is erased when the browser closes. Your work email is saved on this computer to pre-fill the next sign-in.'],
       ['What it stores', 'On this computer only: display choices (theme, view, animation), the last team lead picked, the day\'s call counts, the current property lookup, and your acceptance of these terms. The pitch sheet clears on the next call and is not stored.'],
       ['What it doesn\'t do', 'No analytics, tracking or advertising. No selling or sharing of data. Nothing is sent to the developer or to anyone other than the property sites above and MortgageUSA\'s own Microsoft 365. It doesn\'t read any other website or any other part of the browser.'],
-      ['Questions', 'Contact MortgageUSA management.']]],
+      ['Questions', 'Contact MortgageUSA management. PitchPoint was created by Gorgees Hanna for MTGUSA, LLC dba MortgageUSA (together, the "author(s)").']]],
     disclaimer: ['Disclaimer', '', [
       ['Provided as is', 'PitchPoint (the browser extension and all of its code, the "Software") is provided "AS IS" and "AS AVAILABLE", without warranty of any kind, express or implied, including merchantability, fitness for a particular purpose, accuracy and non-infringement.'],
       ['No liability', 'To the fullest extent permitted by law, the author(s) of the Software are not liable for any claim, damages, loss or other liability, direct or indirect, arising from the Software or its use, including lost or corrupted data, missed or incorrect dispositions or callbacks, dialer or system downtime, errors in property, value or loan information, messages or files sent or not sent, and any regulatory, compliance or contractual consequences.'],

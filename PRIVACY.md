@@ -30,4 +30,4 @@ PitchPoint is an internal tool for MortgageUSA employees. It runs only on Mortga
 - It doesn't read any other website or any other part of the browser.
 
 ## Questions
-Contact MortgageUSA management.
+Contact MortgageUSA management. PitchPoint was created by Gorgees Hanna for MTGUSA, LLC dba MortgageUSA (together, the "author(s)").

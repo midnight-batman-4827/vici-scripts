@@ -12,3 +12,4 @@ PitchPoint is an internal tool of MTGUSA, LLC dba MortgageUSA ("MortgageUSA") fo
 6. **Changes.** MortgageUSA may change, suspend or remove PitchPoint or any feature at any time. If these terms change, you'll be asked to accept them again.
 7. **Disclaimer.** PitchPoint is provided under the [Disclaimer](DISCLAIMER.md), which is part of these terms.
 8. **Problems.** Report errors, suspected misuse, or data sent to the wrong person to your manager right away.
+9. **Definitions.** "Author(s)", wherever used in these terms, the Privacy Policy and the Disclaimer, means Gorgees Hanna and MTGUSA, LLC dba MortgageUSA.
