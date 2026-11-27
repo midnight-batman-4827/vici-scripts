@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      17.3
+// @version      17.4
 // @description  PitchPoint (test channel): MortgageUSA's agent screen, pitch sheet and property facts for Vici
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -2759,6 +2759,11 @@ function readHomesPage(doc) {
         #vl-groups a[onclick*="OpeNGrouPSelectioN"]{display:none!important}   /* GROUPS hidden, LOGOUT stays */
         #dialableleadsspan,#vl-custtime{font-size:13px!important;line-height:18px}#dialableleadsspan *{font-size:13px!important}
         #vl-livebadge i{width:9px;height:9px;border-radius:50%}
+        #vl-inbar{display:flex;align-items:center;gap:10px;box-sizing:border-box;padding:0 14px;border-radius:8px;color:#fff;font:700 13.5px 'Segoe UI',Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.18);white-space:nowrap;overflow:hidden;text-shadow:0 1px 1px rgba(0,0,0,.25)}
+        #vl-inbar .dot{width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.35);flex:none;animation:vlInPulse 1.4s infinite}
+        @keyframes vlInPulse{50%{box-shadow:0 0 0 7px rgba(255,255,255,0)}}
+        #vl-inbar .tag{background:rgba(255,255,255,.24);border-radius:5px;padding:2px 8px;font-size:11.5px;letter-spacing:.05em;flex:none}
+        #vl-inbar .sub{font-weight:500;overflow:hidden;text-overflow:ellipsis}#vl-inbar .t{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;flex:none}
         #vl-livebadge.off{background:#e3e6ea;color:#6b7480;border:1px solid #b9c0c8}#vl-livebadge.off i{background:#9aa3ad}
         #vl-livebadge.on{background:#1aa33c;color:#fff}#vl-livebadge.on i{background:#d9ffd9;box-shadow:0 0 0 3px rgba(255,255,255,.35)}
         #vl-livebadge.dead{background:#c4252b;color:#fff}#vl-livebadge.dead i{background:#ffd5d5}
@@ -3049,6 +3054,7 @@ function readHomesPage(doc) {
       avl.click(); const again = byId('AgentViewLink').querySelector('a'); if (again && /View\s*\+/.test(again.textContent)) again.click();
     }
     liveBadge();
+    try { inboundBar(); } catch (e) {}
     modernButtons();
     xferCard();
     takeover();
@@ -3232,6 +3238,40 @@ function readHomesPage(doc) {
   }
 
   // ---------- Live-call light as a badge (Vici's own picture stays, hidden; it tells us the state) ----------
+  // ---------- Inbound / transfer bar: Vici paints its status line in the in-group's color on inbound calls
+  // ("Incoming: … Group- <name>"). Agency View hides that line, so the same color and group show here instead. ----------
+  const IN_TAGS = [[/SB Xfer|CloserMort|transfer|xfer/i, 'TRANSFER', '#1f9d55'], [/./, 'INBOUND', '#d93a3a']];
+  let inStart = 0, inColor = '', inGroup = '', inSeen = '', inObs = null;
+  const isGrey = (c) => !c || /^(#cccccc|#e6e6e6|rgb\(204, 204, 204\)|rgb\(230, 230, 230\))/i.test(c.trim());
+  function inboundBar() {
+    const st = byId('MainStatuSSpan'), html = document.documentElement;
+    if (st && !inObs) {   // catch the in-group color the moment Vici sets it, even if it greys the line again right after
+      inObs = new MutationObserver(() => { const c = (st.style.background || st.style.backgroundColor || '').trim(); if (!isGrey(c)) inSeen = c; });
+      inObs.observe(st, { attributes: true, attributeFilter: ['style'] });
+    }
+    const live = st && /Incoming:/i.test(st.textContent) && !html.classList.contains('vl-nocall');
+    let b = byId('vl-inbar');
+    if (!live) { if (b) b.remove(); inStart = 0; inColor = ''; inGroup = ''; inSeen = ''; return; }
+    const grp = ((st.innerHTML.match(/Group-\s*([^&<]+?)\s*(?:&nbsp;|<|$)/) || [])[1] || '').trim();
+    const num = ((st.textContent.match(/Incoming:\s*([()\d\s.+-]{7,})/) || [])[1] || '').trim();
+    const [, tag, defColor] = IN_TAGS.find(([re]) => re.test(grp || 'x'));
+    if (grp !== inGroup) { inGroup = grp; inColor = ''; }   // a new call or a transfer into another group
+    const c0 = (st.style.background || st.style.backgroundColor || '').trim();
+    if (!isGrey(c0)) inColor = c0; else if (!inColor && inSeen) inColor = inSeen;   // Vici's in-group color
+    const col = inColor || defColor;   // kept for the whole call even if Vici greys its line; default if none is set
+    const who = [byId('first_name') && byId('first_name').value, byId('last_name') && byId('last_name').value].filter(Boolean).join(' ');
+    if (!b) {
+      inStart = Date.now();
+      b = box('vl-inbar', 184, 52, 'width:690px;height:38px;z-index:60');
+      b.innerHTML = '<span class="dot"></span><span class="tag"></span><span class="g"></span><span class="sub"></span><span class="t"></span>';
+    }
+    b.style.background = col;
+    b.querySelector('.tag').textContent = tag;
+    b.querySelector('.g').textContent = grp || 'Incoming call';
+    b.querySelector('.sub').textContent = [who, num].filter(Boolean).join(' · ') ? '· ' + [who, num].filter(Boolean).join(' · ') : '';
+    const sec = parseInt((byId('SecondSDISP') || {}).textContent, 10) || Math.floor((Date.now() - inStart) / 1000);   // Vici's own call seconds
+    b.querySelector('.t').textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  }
   function liveBadge() {
     const img = document.querySelector('img[name="livecall"]'), wrap = byId('vl-live');
     if (!img || !wrap) return;
