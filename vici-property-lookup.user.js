@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      17.5
+// @version      17.6
 // @description  PitchPoint (test channel): MortgageUSA's agent screen, pitch sheet and property facts for Vici
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -1975,6 +1975,22 @@ function readHomesPage(doc) {
     .vprop-tab.active span.lbl{color:#fff}
     .vprop-tab.vprop-one{gap:7px;padding:0 12px 0 9px!important;background:#1652e6;color:#fff;font:600 13px "Segoe UI",Arial,sans-serif;border-radius:8px 8px 0 0}
     .vprop-tab.vprop-one:hover{background:#0f45c7}.vprop-tab.vprop-one.active{background:#0b2a55}
+    .vprop-tab.vprop-ext{gap:6px;padding:0 11px 0 8px!important;background:#fff;color:#1d2530;border:1px solid #cfd6df;border-bottom:0;font:600 13px "Segoe UI",Arial,sans-serif;border-radius:8px 8px 0 0}
+    .vprop-tab.vprop-ext:hover{background:#eef3ff}.vprop-tab.vprop-ext.active{background:#1d2530;color:#fff;border-color:#1d2530}
+    #vl-xpop{position:fixed;z-index:2147483400;width:520px;background:#fff;color:#1d2530;border:1px solid #d6dce4;border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.22);font:13px "Segoe UI",Arial,sans-serif}
+    #vl-xpop .hd{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:1px solid #e3e7ec}
+    #vl-xpop .hd b{display:flex;align-items:center;gap:8px;font-size:15px}#vl-xpop .vp-fav{border-radius:3px}
+    #vl-xpop .go{background:#1652e6;color:#fff;border-radius:8px;padding:7px 13px;font:700 12.5px "Segoe UI",Arial;text-decoration:none}
+    #vl-xpop .bd{padding:12px 14px}#vl-xpop label{display:block;font:700 10.5px "Segoe UI",Arial;letter-spacing:.05em;color:#6b7686;margin:0 0 8px}
+    #vl-xpop .chips{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+    #vl-xpop .chip{display:flex;justify-content:space-between;align-items:center;gap:6px;border:1px solid #d6dce4;border-radius:8px;background:#fff;padding:6px 9px;font:12.5px "Segoe UI",Arial;color:#1d2530;cursor:pointer;text-align:left}
+    #vl-xpop .chip span{color:#6b7686;font-size:11px}#vl-xpop .chip:hover{border-color:#1652e6}
+    #vl-xpop .cp{border-color:#1f9d55!important;background:#eefaf3!important}
+    #vl-xpop .all{display:inline-block;margin-top:10px;font-weight:600;color:#1652e6;text-decoration:none;font-size:12px}
+    #vl-xpop .addr{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid #d6dce4;border-radius:8px;padding:10px 12px;font-weight:600;font-size:14px;cursor:pointer}
+    #vl-xpop .addr em{font-style:normal;color:#1652e6;font-size:12px;flex:none}#vl-xpop .addr.cp em{color:#1f9d55}
+    #vl-xpop .tip{margin:10px 0 0;font-size:12px;color:#6b7686}#vl-xpop .empty{color:#6b7686;font-size:12.5px}
+    #vl-xpop .ft{padding:9px 14px;border-top:1px solid #e3e7ec;font-size:11.5px;color:#6b7686}
     .vprop-tab.vprop-one svg{width:16px;height:16px}.vprop-tab.vprop-one .lbl{color:#fff}
     .vprop-tab.vprop-one .dot{background:#c9d6f5}.vprop-tab.vprop-one.ready .dot{background:#7CFF9B;box-shadow:0 0 0 2px rgba(255,255,255,.35)}.vprop-tab.vprop-one.fail .dot{background:#ffc24d}
     .vp-sites-open{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
@@ -2396,6 +2412,71 @@ function readHomesPage(doc) {
       els.filter((e) => isTab(e, /^SCRIPT$|tab_script/i)).pop() || null;
   }
 
+  // ---------- UWM Pricing + HouseCanary tabs: each opens the site in its own Edge tab (they can't run inside Vici)
+  // and hands the agent the lead's details to paste. Nothing logs in or reads those sites. ----------
+  const EXT_SITES = {
+    uwm: { label: 'UWM Pricing', title: 'UWM Easy Qualifier', domain: 'uwm.com', url: 'https://ease.uwm.com/', go: 'Open Easy Qualifier' },
+    hc: { label: 'HouseCanary', title: 'HouseCanary', domain: 'housecanary.com', url: 'https://pexp.housecanary.com/', go: 'Open in HouseCanary' }
+  };
+  function leadFacts() {
+    const ps = byId('vl-pitch');
+    const fv = (k) => ps ? String((ps.querySelector(`[data-k="${k}"]`) || {}).value || '').trim() : '';
+    const sel = (g) => ps ? [...ps.querySelectorAll(`[data-g="${g}"] .on`)].map((x) => x.textContent.trim()).join(', ') : '';
+    const vv = (id) => (byId(id) ? String(byId(id).value || '').trim() : '');
+    const a = getAddress(), c = a.missing.length ? null : cache[a.full], zm = c && siteState(c, 'zillow').model;
+    const est = zm && isNum(zm.estimate) ? zm.estimate : null;
+    const value = parseMoney(fv('value')) || est, loan = parseMoney(byLabel(/^Loan\s*Amount/i)), bal = parseMoney(fv('balance'));
+    const ltvBase = loan || bal;
+    const cash = parseMoney(byLabel(/^Cash\s*out/i));
+    return { address: a.missing.length ? '' : a.full, items: [
+      ['FICO', fv('credit') || vv('fico') || ''], ['Value', value ? money(value) : ''], ['Loan amt', loan ? money(loan) : ''],
+      ['LTV', value && ltvBase ? (ltvBase / value * 100).toFixed(1) + '%' : ''], ['ZIP', vv('postal_code')], ['State', vv('state')],
+      ['Occupancy', sel('occ')], ['Type', sel('ptype')], ['Program', sel('pitch') || sel('prog')],
+      ['Balance', bal ? money(bal) : ''], ['Rate', fv('rate')], ['Cash out', cash ? money(cash) : '']].filter((x) => x[1]) };
+  }
+  const copyText = (t) => { try { navigator.clipboard.writeText(t); return true; } catch (e) { return false; } };
+  function extTabs(bar) {
+    Object.keys(EXT_SITES).forEach((k) => {
+      const x = EXT_SITES[k], t = document.createElement('span');
+      t.className = 'vprop-tab vprop-ext'; t.setAttribute('role', 'button'); t.tabIndex = 0; t.dataset.ext = k;
+      t.innerHTML = `${favicon(x, 14)}<span class="lbl">${x.label}</span>`;
+      const go = (e) => { e.preventDefault(); e.stopPropagation(); extPop(k, t); };
+      t.addEventListener('click', go);
+      t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') go(e); });
+      bar.appendChild(t);
+    });
+  }
+  function extPop(k, tab) {
+    let m = byId('vl-xpop');
+    if (m) { const same = m.dataset.k === k; m.remove(); document.querySelectorAll('.vprop-ext.active').forEach((t) => t.classList.remove('active')); if (same) return; }
+    const x = EXT_SITES[k], f = leadFacts();
+    m = document.createElement('div'); m.id = 'vl-xpop'; m.dataset.k = k;
+    const r = tab.getBoundingClientRect();
+    m.style.left = Math.max(8, r.left) + 'px'; m.style.top = (r.bottom + 6) + 'px';
+    const e2 = (v) => String(v).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    if (k === 'hc') {
+      const ok = f.address && copyText(f.address);
+      m.innerHTML = `<div class="hd"><b>${favicon(x, 16)}${x.title}</b><a class="go" href="${x.url}" target="_blank" rel="noopener">${x.go} ↗</a></div>
+        <div class="bd"><label>PROPERTY</label>${f.address ? `<div class="addr" data-copy="${e2(f.address)}"><span>${e2(f.address)}</span><em>${ok ? 'Copied ✓' : 'Click to copy'}</em></div>` : '<div class="empty">No property address on this lead yet.</div>'}
+        <p class="tip">Opens HouseCanary in a new tab. Paste the address into its search.</p></div>`;
+    } else {
+      const all = f.items.map(([l, v]) => l + ': ' + v).join('\n');
+      m.innerHTML = `<div class="hd"><b>${favicon(x, 16)}${x.title}</b><a class="go" href="${x.url}" target="_blank" rel="noopener">${x.go} ↗</a></div>
+        <div class="bd"><label>CLICK TO COPY, THEN PASTE INTO EQ</label>${f.items.length ? `<div class="chips">${f.items.map(([l, v]) => `<button type="button" class="chip" data-copy="${e2(v.replace(/[$,%]/g, ''))}"><span>${l}</span><b>${e2(v)}</b></button>`).join('')}</div>
+        <a href="#" class="all" data-copy="${e2(all)}">Copy all as text</a>` : '<div class="empty">Fill in the pitch sheet and the numbers show up here.</div>'}</div>
+        <div class="ft">Opens UWM in a new tab (you stay signed in). Values come from the pitch sheet and the lead.</div>`;
+    }
+    m.addEventListener('click', (e) => {
+      const c = e.target.closest('[data-copy]'); if (!c) return;
+      e.preventDefault(); copyText(c.dataset.copy);
+      m.querySelectorAll('.cp').forEach((y) => y.classList.remove('cp')); c.classList.add('cp');
+      const em = c.querySelector('em'); if (em) em.textContent = 'Copied ✓';
+    });
+    document.documentElement.appendChild(m);
+    tab.classList.add('active');
+    setTimeout(() => document.addEventListener('click', function off(e) { if (e.target.closest('#vl-xpop, .vprop-ext')) return; const p = byId('vl-xpop'); if (p) p.remove(); tab.classList.remove('active'); document.removeEventListener('click', off, true); }, true), 0);
+  }
+
   // The tabs float on top of Vici's header, right after SCRIPT 2 (no room in Vici's own row)
   let tabBar = null;
   function addTabs() {
@@ -2414,6 +2495,7 @@ function readHomesPage(doc) {
         tabBar.appendChild(t);
         tabs[s.key] = t;
       });
+      extTabs(tabBar);   // UWM Pricing + HouseCanary
       document.body.appendChild(tabBar);
       // clicking any of Vici's own tabs (MAIN / SCRIPT / SCRIPT 2) closes the site screen
       document.addEventListener('click', (e) => {
