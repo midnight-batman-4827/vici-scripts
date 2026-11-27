@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      17.4
+// @version      17.5
 // @description  PitchPoint (test channel): MortgageUSA's agent screen, pitch sheet and property facts for Vici
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
@@ -2759,6 +2759,11 @@ function readHomesPage(doc) {
         #vl-groups a[onclick*="OpeNGrouPSelectioN"]{display:none!important}   /* GROUPS hidden, LOGOUT stays */
         #dialableleadsspan,#vl-custtime{font-size:13px!important;line-height:18px}#dialableleadsspan *{font-size:13px!important}
         #vl-livebadge i{width:9px;height:9px;border-radius:50%}
+        #vl-hkask{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483500;display:flex;align-items:center;gap:10px;background:#1d2530;color:#fff;border-radius:12px;padding:12px 18px 14px;font:600 14px 'Segoe UI',Arial,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);overflow:hidden}
+        #vl-hkask kbd{display:inline-block;min-width:22px;text-align:center;background:#f5b400;color:#1d2530;border-radius:5px;padding:1px 6px;font:800 14px 'Segoe UI',Arial;margin:0 2px}
+        #vl-hkask b{color:#f5b400;font-weight:800}#vl-hkask em{font-style:normal;font-weight:500;opacity:.7;font-size:12.5px}
+        #vl-hkask i{position:absolute;left:0;bottom:0;height:3px;background:#f5b400;width:100%;animation:vlHkTime 4s linear forwards}
+        @keyframes vlHkTime{to{width:0}}
         #vl-inbar{display:flex;align-items:center;gap:10px;box-sizing:border-box;padding:0 14px;border-radius:8px;color:#fff;font:700 13.5px 'Segoe UI',Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.18);white-space:nowrap;overflow:hidden;text-shadow:0 1px 1px rgba(0,0,0,.25)}
         #vl-inbar .dot{width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.35);flex:none;animation:vlInPulse 1.4s infinite}
         @keyframes vlInPulse{50%{box-shadow:0 0 0 7px rgba(255,255,255,0)}}
@@ -3295,6 +3300,37 @@ function readHomesPage(doc) {
     if (a && on !== hkOn()) a.dispatchEvent(new MouseEvent(on ? 'mouseover' : 'mouseout', { bubbles: true }));
   };
   const hkWanted = () => !!GM_getValue('vpHotKeysOn', false);
+  // ---------- Hot-key confirmation: on a live call the first press of a hot key only asks; pressing the same key
+  // again within 4 seconds lets it through to Vici, which dispositions the call as before. Esc cancels. ----------
+  let hkArm = null;
+  const hkLabels = () => {
+    const m = {};
+    ['HotKeyBoxA', 'HotKeyBoxB', 'HotKeyBoxC'].map((id) => byId(id) ? byId(id).innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ') : '')
+      .join('\n').split('\n').forEach((l) => { const x = l.replace(/\s+/g, ' ').trim().match(/^(\S+)\s*-\s*(\S+)\s*-\s*(.+)$/); if (x) m[x[1]] = x[3]; });
+    return m;
+  };
+  const hkAsk = (k, label) => {
+    let b = byId('vl-hkask');
+    if (!k) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.id = 'vl-hkask'; document.documentElement.appendChild(b); }
+    b.innerHTML = `<span>Press <kbd>${k}</kbd> again to disposition</span><b></b><em>Esc to cancel</em><i></i>`;
+    b.querySelector('b').textContent = label;
+    b.querySelector('i').style.animation = 'none'; void b.offsetWidth; b.querySelector('i').style.animation = '';
+  };
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && hkArm) { hkArm = null; hkAsk(''); } }, true);
+  window.addEventListener('keypress', (e) => {
+    const html = document.documentElement;
+    if (!/\/agc\//.test(location.pathname) || !hkWanted() || html.classList.contains('vl-nocall') || html.classList.contains('vl-takeover')) return;
+    const tg = e.target;   // typing in a box: the key is just typed (boxes never disposition, see below)
+    if (tg && (tg.isContentEditable || (/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName) && tg.type !== 'button'))) return;
+    const k = e.key, labels = hkLabels();
+    if (!k || !(k in labels)) return;
+    if (hkArm && hkArm.k === k && Date.now() - hkArm.t < 4000) { hkArm = null; hkAsk(''); return; }   // confirmed: Vici takes it from here
+    e.preventDefault(); e.stopImmediatePropagation();
+    hkArm = { k, t: Date.now() };
+    hkAsk(k, labels[k]);
+    setTimeout(() => { if (hkArm && Date.now() - hkArm.t >= 4000) { hkArm = null; hkAsk(''); } }, 4100);
+  }, true);
   let stackBottom = 0;
   const panelH = () => (stackBottom || L.pitch[1] + L.pitch[3]) - L.pitch[1];
   // ---------- Other agents + Hot Keys: one card under "Property at a glance", always shown ----------
@@ -3331,7 +3367,7 @@ function readHomesPage(doc) {
     byId('vl-hksw').classList.toggle('on', want); byId('vl-hksw').setAttribute('aria-checked', String(want));
     byId('vl-hksw').querySelector('span').textContent = want ? 'On' : 'Off';
     if (hk.dataset.k !== hkHTML) { hk.dataset.k = hkHTML; hk.querySelector('.keys').innerHTML = hkHTML; }
-    hk.querySelector('.note').textContent = want ? 'Press a number during a call to disposition it.' : 'Turn on to disposition calls with a number key.';
+    hk.querySelector('.note').textContent = want ? 'During a call, press a number twice to disposition it.' : 'Turn on to disposition calls with a number key.';
     // other agents, from Vici's list colours
     const rows = [...document.querySelectorAll('#AgentViewStatus tr[bgcolor]')].map((tr) => ({ c: AG_COL[(tr.getAttribute('bgcolor') || '').toUpperCase()] || 'o',
       n: (() => { const t = tr.textContent.replace(/\u00a0/g, ' ').trim(), m = t.match(/^(\S+)\s*-\s*(.+)$/);
