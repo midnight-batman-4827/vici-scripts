@@ -25,13 +25,13 @@ for f in os.listdir(os.path.join(ext, 'icons')):
 
 manifest = {
     'manifest_version': 3,
-    'name': 'Mortgageusa Property Lookup',
-    'short_name': 'Property Lookup',
+    'name': 'PitchPoint',
+    'short_name': 'PitchPoint',
     'version': version,
-    'description': 'Adds Zillow, Realtor.com, Homes.com and Trulia property tabs to the Mortgageusa VICIdial agent screen.',
+    'description': 'PitchPoint: MortgageUSA\'s agent screen, pitch sheet and property facts for its VICIdial system.',
     'icons': {s: f'icons/icon{s}.png' for s in ('16', '32', '48', '128')},
     'background': {'service_worker': 'background.js'},
-    'permissions': ['storage', 'declarativeNetRequestWithHostAccess'],
+    'permissions': ['storage', 'declarativeNetRequestWithHostAccess', 'identity'],
     'storage': {'managed_schema': 'managed_schema.json'},
     'host_permissions': [
         'https://www.zillowstatic.com/*', 'https://parser-external.geo.moveaws.com/*',
@@ -43,11 +43,11 @@ manifest = {
 }
 json.dump(manifest, open(os.path.join(out, 'manifest.json'), 'w'), indent=2)
 # settings an admin can push to every PC through Edge policy (see extension/force-install-edge.reg)
-json.dump({'type': 'object', 'properties': {'flowUrl': {'title': 'Send to Team Lead flow URL', 'description': 'HTTP URL of the Power Automate flow that files pitch sheets in SharePoint and posts them to the team lead in Teams.', 'type': 'string'}}},
+json.dump({'type': 'object', 'properties': {'flowUrl': {'title': 'Send to Team Lead flow URL', 'description': 'HTTP URL of the Power Automate flow (trigger set to Any user in my tenant).', 'type': 'string'}, 'tlTenant': {'title': 'Directory (tenant) ID', 'type': 'string'}, 'tlClient': {'title': 'Application (client) ID of the Vici Pitch Sheets app registration', 'type': 'string'}}},
           open(os.path.join(out, 'managed_schema.json'), 'w'), indent=2)
 
 os.makedirs(os.path.join(ROOT, 'dist'), exist_ok=True)
-zpath = os.path.join(ROOT, 'dist', f'mortgageusa-property-lookup-{version}.zip')
+zpath = os.path.join(ROOT, 'dist', f'pitchpoint-{version}.zip')
 with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED) as z:
     for dp, _, files in os.walk(out):
         for f in files:

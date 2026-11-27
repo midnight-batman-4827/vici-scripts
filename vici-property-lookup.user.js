@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Vici Property Lookup
 // @namespace    mortgageusa.vici
-// @version      17.2
-// @description  ZILLOW / REALTOR / HOMES.COM / TRULIA tabs (next to SCRIPT 2) with each site's facts about the home
+// @version      17.3
+// @description  PitchPoint (test channel): MortgageUSA's agent screen, pitch sheet and property facts for Vici
 // @match        *://mtgusa.talkitpro.com/agc/*
 // @match        *://www.homes.com/*
 // @match        *://mtgusa.talkitpro.com/vicidial/admin_listloader*
@@ -25,6 +25,9 @@
 // @updateURL    https://raw.githubusercontent.com/midnight-batman-4827/vici-scripts/main/vici-property-lookup.user.js
 // @downloadURL  https://raw.githubusercontent.com/midnight-batman-4827/vici-scripts/main/vici-property-lookup.user.js
 // ==/UserScript==
+
+// PitchPoint. Provided AS IS, without warranty of any kind. The author(s) are not liable for any damages, data loss or misuse
+// arising from this software, extension or code. Full text: DISCLAIMER.md in the repository.
 
 (function () {
   'use strict';
@@ -2761,7 +2764,7 @@ function readHomesPage(doc) {
         #vl-livebadge.dead{background:#c4252b;color:#fff}#vl-livebadge.dead i{background:#ffd5d5}
         .vl-full{left:0!important;top:0!important;width:calc(100vw / var(--vlz, 1))!important;height:calc(100vh / var(--vlz, 1))!important;background:#fff;z-index:2147483000!important}
         .vl-full>table{width:100%!important;height:100%!important}
-        html.vl-takeover #vprop-tabbar,html.vl-takeover #vprop-card,html.vl-takeover #vprop-screen,html.vl-takeover [id^="vl-"]:not(#vl-hidden):not(#vl-style):not(#vl-pitch-style):not(#vl-dispo):not(#vl-cover):not(#vl-intro),
+        html.vl-takeover #vprop-tabbar,html.vl-takeover #vprop-card,html.vl-takeover #vprop-screen,html.vl-takeover [id^="vl-"]:not(#vl-hidden):not(#vl-style):not(#vl-pitch-style):not(#vl-dispo):not(#vl-cover):not(#vl-intro):not(#vl-disc),
         html.vl-takeover #AgentViewSpan,html.vl-takeover #AgentViewLinkSpan,html.vl-takeover #webphoneSpan,html.vl-takeover #SecondSspan{visibility:hidden!important}
         html.vl-takeover #vl-pitch{display:none!important}
         #vl-hklist{margin-top:8px;width:166px;box-sizing:border-box;background:#ffeebb;border:1px solid #e3c77a;border-radius:8px;padding:6px 8px;font:12px/1.5 Arial,sans-serif;display:none}
@@ -2903,7 +2906,7 @@ function readHomesPage(doc) {
         #vl-theme .vn{margin:4px 8px;font:11px "Segoe UI",Arial;color:#6b7686}#vl-theme .vn:empty{display:none}
         #vl-theme .flow{margin:2px 8px 6px;font:12px "Segoe UI",Arial;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
         #vl-theme .flow input{flex:1;min-width:0;height:26px;border:1px solid #cdd4dd;border-radius:6px;padding:0 6px;font:12px "Segoe UI",Arial}
-        #vl-theme .flow a{color:#1652e6;font-weight:600;text-decoration:none}#vl-theme .flow .ok{color:#137a32;font-weight:700}
+        #vl-theme .flow a,#vl-theme .legal a{color:#1652e6;font-weight:600;text-decoration:none}#vl-theme .flow .ok{color:#137a32;font-weight:700}
         #NothingBox2,#inert_button{opacity:0!important}
         /* every theme except Vici grey: header band, light page, Vici's grey boxes see-through */
         #vl-band{display:none}
@@ -3061,6 +3064,7 @@ function readHomesPage(doc) {
     // plays once the screen is really up (after Vici's own login boxes, e.g. picking in-groups, have closed)
     if (!introDone && performance.now() > 120000) { introDone = true; introWhy('gave up: Vici box still up after 2 min'); }
     if (!introDone && !document.documentElement.classList.contains('vl-takeover') && byId('vl-team') && byId('vl-script') && byId('vl-pitch')) { introDone = true; try { playIntro(); } catch (e) { introWhy('error: ' + e.message); } }
+    if (introDone && !discAsked && !byId('vl-intro') && !byId('vl-cover') && !document.documentElement.classList.contains('vl-takeover') && GM_getValue('vpTermsOK', '') !== LEGAL_VER) { discAsked = true; showDisclaimer(true); }
   }
 
 
@@ -3367,10 +3371,12 @@ function readHomesPage(doc) {
         <b class="sep">SCREEN</b><div data-vw="agency" class="${view === 'agency' ? 'on' : ''}"><i style="background:linear-gradient(135deg,#1652e6 50%,#fff 50%)"></i>Agency View</div>
         <div data-vw="classic" class="${view === 'classic' ? 'on' : ''}"><i style="background:#cccccc"></i>Classic Vici</div><p class="vn"></p>
         <b class="sep">SEND TO TEAM LEAD</b><p class="flow"></p>
-        <b class="sep">OPENING ANIMATION</b><div data-intro="1" class="${GM_getValue('vpIntro', true) ? 'on' : ''}"><i style="background:repeating-linear-gradient(90deg,#151515 0 4px,#f4f1ea 4px 6px)"></i>Play when I log in</div></div>`;
+        <b class="sep">OPENING ANIMATION</b><div data-intro="1" class="${GM_getValue('vpIntro', true) ? 'on' : ''}"><i style="background:repeating-linear-gradient(90deg,#151515 0 4px,#f4f1ea 4px 6px)"></i>Play when I log in</div>
+        <b class="sep">ABOUT</b><p class="legal" style="margin:2px 8px 6px;font:12px 'Segoe UI',Arial"><a href="#" data-about="terms">Terms</a> · <a href="#" data-about="privacy">Privacy</a> · <a href="#" data-about="disclaimer">Disclaimer</a></p></div>`;
     w.querySelector('.tb').addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); w.classList.toggle('open'); });
     w.querySelector('.menu').addEventListener('click', (e) => {
       e.stopPropagation();
+      const ab = e.target.closest('[data-about]'); if (ab) { e.preventDefault(); w.classList.remove('open'); showDisclaimer(false, ab.dataset.about); return; }
       const t = e.target.closest('[data-th]'), v = e.target.closest('[data-vw]'), io = e.target.closest('[data-intro]');
       if (io) { const on = !GM_getValue('vpIntro', true); GM_setValue('vpIntro', on); io.classList.toggle('on', on); }
       if (t) { GM_setValue('vpTheme', t.dataset.th); applyTheme(t.dataset.th); w.classList.remove('open'); }
@@ -3384,20 +3390,19 @@ function readHomesPage(doc) {
     });
     document.addEventListener('click', (e) => { if (!e.target.closest('#vl-theme')) w.classList.remove('open'); });
     const flowBox = w.querySelector('.flow');
-    const drawFlow = (edit) => {
-      if (policyFlow()) { flowBox.innerHTML = '<span class="ok">Connected ✓</span> <span style="opacity:.7">set by your company</span>'; return; }
-      flowBox.innerHTML = flowUrl() && !edit ? '<span class="ok">Connected ✓</span> <a href="#" data-fl="edit">change</a>'
-        : '<input type="password" placeholder="Paste the flow URL (admin, once per PC)" autocomplete="off"><a href="#" data-fl="save">Save</a>' + (GM_getValue('vpFlowUrl', '') ? ' · <a href="#" data-fl="clear">remove</a>' : '');
+    const drawFlow = () => {
+      if (!MS) { flowBox.innerHTML = '<span style="opacity:.75">Sends straight to Teams in the Edge extension. Here: PDF + Teams/Outlook.</span>'; return; }
+      if (!msState.setup) { flowBox.innerHTML = '<span style="opacity:.75">Not set up yet: PDF + Teams/Outlook for now.</span>'; return; }
+      flowBox.innerHTML = msState.user ? '<span class="ok">Signed in ✓</span> <span style="opacity:.75">' + escH(msState.user) + '</span> · <a href="#" data-fl="out">sign out</a>'
+        : '<a href="#" data-fl="in">Sign in with Microsoft</a>';
     };
     flowBox.addEventListener('click', (e) => {
       const a = e.target.closest('[data-fl]'); if (!a) return; e.preventDefault(); e.stopPropagation();
-      if (a.dataset.fl === 'edit') return drawFlow(true);
-      if (a.dataset.fl === 'clear') { GM_setValue('vpFlowUrl', ''); return drawFlow(true); }
-      const v = flowBox.querySelector('input').value.trim();
-      if (!/^https:\/\/[^/]+\.(powerplatform\.com|logic\.azure\.com)(:\d+)?\//i.test(v)) { flowBox.querySelector('input').style.borderColor = '#c4252b'; return; }
-      GM_setValue('vpFlowUrl', v); drawFlow(false);
+      if (a.dataset.fl === 'out') MS.signout(() => { msState.user = ''; drawFlow(); });
+      else MS.signin((r) => { if (r && r.user) msState.user = r.user; drawFlow(); });
     });
-    drawFlow(false);
+    w.querySelector('.tb').addEventListener('click', () => msRefresh(drawFlow));
+    drawFlow();
     applyTheme(GM_getValue('vpTheme', 'clean'));
     return w;
   }
@@ -3527,7 +3532,7 @@ function readHomesPage(doc) {
       dState.submitted = true;
       if (dState.pick === 'CALLBK') { dState.cbPending = true; document.documentElement.classList.add('vl-cbfill'); }
       if (dState.pick === 'SALE' && q('.tlsw').classList.contains('on')) {   // summary taken now, before the next lead clears the pitch sheet
-        const via = flowUrl() ? '' : (q('.tlvia .on') ? q('.tlvia .on').dataset.via : 'teams');
+        const via = teamsReady() ? '' : (q('.tlvia .on') ? q('.tlvia .on').dataset.via : 'teams');
         sendLead(q('.tlsel').value, pitchSummary() + (notes.value.trim() ? '\nCall notes: ' + notes.value.trim() : ''), via);
       }
       const go = vLink(/DispoSelect_submit\(/); if (go) go.click();
@@ -3630,6 +3635,62 @@ function readHomesPage(doc) {
   // Builders sketch each piece of the screen where it sits, a pixel loader fills, then the screen fades in.
   // It's only a cover: Vici keeps loading and working underneath the whole time.
   let introDone = false;
+  // ---------- Terms of Use, Privacy Policy and Disclaimer: built in (works offline and if GitHub is private).
+  // Terms + Disclaimer are accepted once per PC; any change bumps LEGAL_VER so everyone accepts again.
+  // All three open any time from the half-moon menu → ABOUT. ----------
+  const LEGAL_VER = '2026-11-27';
+  let discAsked = false;
+  const LEGAL = {
+    terms: ['Terms of Use', 'PitchPoint is an internal tool of MTGUSA, LLC dba MortgageUSA ("MortgageUSA") for its VICIdial system. By using it you agree to these terms.', [
+      ['1. Who may use it', 'Only authorized MortgageUSA employees and contractors, for MortgageUSA business, signed in with their own VICIdial and Microsoft accounts. Don\'t share logins or let anyone else use your session.'],
+      ['2. Borrower information', 'Treat everything PitchPoint shows or creates as confidential borrower information. Send pitch sheets only to MortgageUSA team leads and company systems. Don\'t copy, forward, print, screenshot or keep pitch sheets or lead details outside company systems, or on personal devices or accounts. If a pitch sheet PDF is downloaded to your computer, delete it once it\'s been sent. The SSN is never included in pitch sheets; don\'t type it into notes or other fields.'],
+      ['3. Compliance stays with you', 'PitchPoint doesn\'t replace your obligations under federal and state law (including the TCPA, Do-Not-Call rules, and fair-lending and privacy laws) or MortgageUSA\'s policies. Property values and other information shown are for reference only and must be verified.'],
+      ['4. Don\'t change or share the software', 'Don\'t copy, modify, reverse-engineer or share PitchPoint, or try to get around its security, outside MortgageUSA.'],
+      ['5. Monitoring', 'Use of PitchPoint, including sign-ins and pitch sheets sent, may be logged and reviewed by MortgageUSA.'],
+      ['6. Changes', 'MortgageUSA may change, suspend or remove PitchPoint or any feature at any time. If these terms change, you\'ll be asked to accept them again.'],
+      ['7. Disclaimer', 'PitchPoint is provided under the Disclaimer, which is part of these terms.'],
+      ['8. Problems', 'Report errors, suspected misuse, or data sent to the wrong person to your manager right away.']]],
+    privacy: ['Privacy Policy', 'PitchPoint is an internal tool for MortgageUSA employees. It runs only on MortgageUSA\'s VICIdial pages (mtgusa.talkitpro.com) and, as an optional helper, on www.homes.com.', [
+      ['What it reads', 'The lead open on the VICIdial agent screen (name, phone, property address and loan fields); what you type into the pitch sheet and disposition screen; your VICIdial user name and ID (used only on screen).'],
+      ['Property lookups', 'The lead\'s property address is sent to Zillow (and Realtor.com\'s and Move\'s public address services) to look up and match public property details. Only the address is sent.'],
+      ['Send to Team Lead', 'Only when you click Send, the pitch sheet (a PDF and a short summary) goes to MortgageUSA\'s own Microsoft 365 workflow (Power Automate), which saves it in MortgageUSA\'s private SharePoint site and messages the chosen team lead in Microsoft Teams. The SSN and your name are never included. The workflow\'s run history records which company account sent each sheet. If Teams sending isn\'t available, the PDF downloads to your computer and a Teams chat or Outlook email opens for you to send.'],
+      ['Microsoft sign-in', 'You sign in in Microsoft\'s own window; PitchPoint never sees or stores your password. Microsoft issues a sign-in token (about an hour) that\'s kept only in the browser\'s memory, inside the extension, and is erased when the browser closes. Your work email is saved on this computer to pre-fill the next sign-in.'],
+      ['What it stores', 'On this computer only: display choices (theme, view, animation), the last team lead picked, the day\'s call counts, the current property lookup, and your acceptance of these terms. The pitch sheet clears on the next call and is not stored.'],
+      ['What it doesn\'t do', 'No analytics, tracking or advertising. No selling or sharing of data. Nothing is sent to the developer or to anyone other than the property sites above and MortgageUSA\'s own Microsoft 365. It doesn\'t read any other website or any other part of the browser.'],
+      ['Questions', 'Contact MortgageUSA management.']]],
+    disclaimer: ['Disclaimer', '', [
+      ['Provided as is', 'PitchPoint (the browser extension and all of its code, the "Software") is provided "AS IS" and "AS AVAILABLE", without warranty of any kind, express or implied, including merchantability, fitness for a particular purpose, accuracy and non-infringement.'],
+      ['No liability', 'To the fullest extent permitted by law, the author(s) of the Software are not liable for any claim, damages, loss or other liability, direct or indirect, arising from the Software or its use, including lost or corrupted data, missed or incorrect dispositions or callbacks, dialer or system downtime, errors in property, value or loan information, messages or files sent or not sent, and any regulatory, compliance or contractual consequences.'],
+      ['Misuse', 'The author(s) are not responsible for any misuse of the Software, or any use that breaks a law, regulation, contract (including agreements with phone-system, data or hosting providers), website terms of use or company policy. Each user and the company deploying the Software are responsible for using it lawfully.'],
+      ['Not advice', 'Property values, sale and tax history and other information shown come from third-party sources, may be wrong or out of date, and are not an appraisal, credit decision or legal, tax or financial advice. Always verify before relying on them.'],
+      ['Your responsibility', 'By using the Software you accept these terms. If you do not agree, do not use it.']]]
+  };
+  function showDisclaimer(first, tab) {
+    if (byId('vl-disc')) return;
+    const d = document.createElement('div'); d.id = 'vl-disc';
+    d.style.cssText = 'position:fixed;inset:0;z-index:2147483550;background:rgba(10,18,32,.55);display:flex;align-items:center;justify-content:center;font:13px "Segoe UI",Arial,sans-serif';
+    const tabs = first ? ['terms', 'disclaimer'] : ['terms', 'privacy', 'disclaimer'];
+    let cur = tab || 'terms';
+    const ver = (() => { try { return GM_info.script.version; } catch (e) { return ''; } })();
+    const draw = () => {
+      const [title, intro, items] = LEGAL[cur];
+      d.innerHTML = `<div style="width:600px;max-width:92vw;max-height:86vh;display:flex;flex-direction:column;background:#fff;color:#1d2530;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.4)">
+        <div style="padding:14px 20px 0;border-bottom:1px solid #e3e7ec"><div style="font-weight:700;font-size:16px;margin-bottom:10px">${first ? 'PitchPoint · Terms of Use &amp; Disclaimer' : 'PitchPoint'}</div>
+          <div style="display:flex;gap:4px">${tabs.map((k) => `<button type="button" data-tab="${k}" style="border:0;background:none;padding:8px 12px;font:600 13px 'Segoe UI',Arial;cursor:pointer;color:${k === cur ? '#1652e6' : '#6b7686'};border-bottom:2px solid ${k === cur ? '#1652e6' : 'transparent'}">${LEGAL[k][0]}</button>`).join('')}</div></div>
+        <div style="padding:6px 20px 8px;line-height:19px;overflow:auto">${intro ? `<p style="margin:12px 0">${intro}</p>` : ''}${items.map(([h, t]) => `<p style="margin:10px 0"><b>${h}.</b> ${t}</p>`).join('')}
+          <p style="margin:12px 0 4px;color:#8a94a3;font-size:11.5px">Last updated November 27, 2026</p></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 20px;border-top:1px solid #e3e7ec;color:#6b7686;font-size:11.5px">
+          <span>${first ? 'By clicking I agree, you accept the Terms of Use and the Disclaimer.' : 'Version ' + ver}</span>
+          <button type="button" data-ok="1" style="border:0;border-radius:8px;background:#1652e6;color:#fff;font:700 13px 'Segoe UI',Arial;padding:8px 20px;cursor:pointer;flex:none">${first ? 'I agree' : 'Close'}</button></div></div>`;
+    };
+    draw();
+    d.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-tab]'); if (t) { cur = t.dataset.tab; draw(); return; }
+      if (e.target.closest('[data-ok]')) { if (first) GM_setValue('vpTermsOK', LEGAL_VER); d.remove(); return; }
+      if (!first && e.target === d) d.remove();
+    });
+    document.documentElement.appendChild(d);
+  }
   function playIntro() {
     if (!GM_getValue('vpIntro', true)) { const cv = byId('vl-cover'); if (cv) cv.remove(); introWhy('off in the menu'); return; }
     if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { introWhy('Windows animations are off'); return; }
@@ -3811,7 +3872,24 @@ function readHomesPage(doc) {
     #vl-tlbox .go,#vl-tlbox .go2{border:0;border-radius:8px;padding:9px;font:600 13px "Segoe UI",Arial;cursor:pointer;color:#fff}
     #vl-tlbox .go{background:#5059c9}#vl-tlbox .go2{background:#0f6cbd}#vl-tlbox .go.full{grid-column:1/-1}#vl-tlbox .note a{color:#1652e6}
     #vl-tlbox .x{position:absolute;right:8px;top:6px;border:0;background:none;cursor:pointer;color:#6b7686}
-    #vl-tlbox .note{grid-column:1/-1;font-size:11.5px;color:#6b7686}`;
+    #vl-tlbox .note{grid-column:1/-1;font-size:11.5px;color:#6b7686}
+    #vl-tlbox.ms{display:block;width:380px;padding:0;overflow:hidden;font:13px "Segoe UI",Arial,sans-serif}
+    #vl-tlbox.ms .hd{font-weight:700;font-size:14.5px;padding:12px 14px;border-bottom:1px solid #e3e7ec}
+    #vl-tlbox.ms label{display:block;font-size:10.5px;font-weight:700;letter-spacing:.05em;color:#6b7686;margin:10px 14px 6px}
+    #vl-tlbox.ms .leads{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 14px}
+    #vl-tlbox.ms .lead{display:flex;align-items:center;gap:7px;border:1px solid #d6dce4;border-radius:8px;background:#fff;padding:6px 8px;font:12.5px "Segoe UI",Arial;cursor:pointer;color:#1d2530;text-align:left}
+    #vl-tlbox.ms .lead i{width:22px;height:22px;border-radius:50%;background:#e3e7ec;display:inline-flex;align-items:center;justify-content:center;font:700 9.5px "Segoe UI",Arial;font-style:normal}
+    #vl-tlbox.ms .lead.on{border-color:#1652e6;background:#eef3ff}#vl-tlbox.ms .lead.on i{background:#1652e6;color:#fff}
+    #vl-tlbox.ms .msg{margin:0 14px;border:1px solid #e3e7ec;border-radius:8px;background:#f7f9fb;padding:8px 10px;font-size:12.5px;line-height:18px;max-height:120px;overflow:auto}
+    #vl-tlbox.ms .file{display:flex;gap:9px;align-items:center;margin:8px 14px 0;border:1px solid #e3e7ec;border-radius:8px;padding:7px 9px;font-size:12px}
+    #vl-tlbox.ms .file small{color:#6b7686}#vl-tlbox.ms .pdf{width:26px;height:32px;border-radius:3px;background:#e3262d;color:#fff;font:800 8.5px Arial;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px;box-sizing:border-box;flex:none}
+    #vl-tlbox.ms .ft{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding:10px 14px;border-top:1px solid #e3e7ec;font-size:11.5px;color:#6b7686}
+    #vl-tlbox.ms .ft a{color:#1652e6}#vl-tlbox.ms .send{border:0;border-radius:8px;background:#1652e6;color:#fff;font:700 13px "Segoe UI",Arial;padding:8px 20px;cursor:pointer}
+    #vl-tlbox.ms .sign{text-align:center;padding:16px 18px 18px}#vl-tlbox.ms .sign p{margin:0 0 10px;line-height:18px}#vl-tlbox.ms .sign .t{font-weight:700;font-size:14px}
+    #vl-tlbox.ms .sign .sm{font-size:11px;color:#6b7686;margin:10px 0 0}
+    #vl-tlbox.ms .msbtn{display:inline-flex;align-items:center;gap:9px;border:1px solid #8c8c8c;border-radius:6px;background:#fff;padding:8px 14px;font:600 13px "Segoe UI",Arial;cursor:pointer;color:#1d2530}
+    #vl-tlbox.ms .sq{display:grid;grid-template-columns:8px 8px;gap:2px}#vl-tlbox.ms .sq i{width:8px;height:8px;display:block}
+    #vl-tlbox.ms button[disabled]{opacity:.6;cursor:default}`;
 
   let psLead = null;
   const typeToPill = (t) => { t = String(t || '').toLowerCase();
@@ -3901,10 +3979,9 @@ function readHomesPage(doc) {
     const v = (id) => (byId(id) ? String(byId(id).value || '').trim() : '');
     const a = getAddress(), c = a.missing.length ? null : cache[a.full], zm = c && siteState(c, 'zillow').model;
     const est = zm && isNum(zm.estimate) ? zm.estimate : null, loan = parseMoney(byLabel(/^Loan\s*Amount/i));
-    const agent = agentInfo().label;
     const L2 = (k, x) => x ? `${k}: ${x}` : '';
     return [
-      'PITCH SHEET' + (agent ? ' from ' + agent : ''),
+      'PITCH SHEET',
       L2('Borrower', f('borrower') || [v('first_name'), v('last_name')].filter(Boolean).join(' ')),
       L2('Phone', f('phone') || v('phone_number')), L2('Cell', f('cell')), L2('Email', f('email')),
       L2('Property', a.missing.length ? '' : a.full), L2('Occupancy', pills('occ')), L2('Property type', pills('ptype')),
@@ -4010,7 +4087,7 @@ function readHomesPage(doc) {
       const tx = M + 106, ttl = 'Pitch sheet', tW = tw(ttl, 20, true);
       ops.push(T(tx, H - 60, ttl, 20, true));
       if (name) ops.push(T(tx + tW, H - 60, fit('  ·  ' + name, W - M - 150 - tx - tW, 20), 20, false, '#5b6675'));
-      const meta = pi ? [['MortgageUSA', true], ['continued', false]] : [['MortgageUSA', true], [ag.label ? 'Agent: ' + ag.label : '', false], [leadName ? 'For: ' + leadName : '', false], [stamp, false]].filter((m) => m[0]);
+      const meta = pi ? [['MortgageUSA', true], ['continued', false]] : [['MortgageUSA', true], [leadName ? 'For: ' + leadName : '', false], [stamp, false]].filter((m) => m[0]);
       meta.forEach(([s, b], i) => ops.push(T(W - M - tw(s, 8.5, b), H - 34 - i * 11, s, 8.5, b, b ? '#1d2530' : '#5b6675')));
       ops.push(`${rgb('#1d2530')} RG 1.5 w ${M} ${H - 78} m ${W - M} ${H - 78} l S`);
       if (!pi) {
@@ -4070,7 +4147,7 @@ function readHomesPage(doc) {
     });
     O[0] = `<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [${fields.map((r) => r + ' 0 R').join(' ')}] /DR << /Font << /Helv ${F1} 0 R /ZaDb ${ZD} 0 R >> >> /DA (/Helv 0 Tf 0 g) >> >>`;
     O[1] = `<< /Type /Pages /Kids [${pageRefs.map((r) => r + ' 0 R').join(' ')}] /Count ${pageRefs.length} >>`;
-    const info = add(`<< /Title (${esc('Pitch sheet' + (name ? ' - ' + name : ''))}) /Author (${esc(ag.label || 'MortgageUSA')}) /Creator (MortgageUSA Vici) >>`);
+    const info = add(`<< /Title (${esc('Pitch sheet' + (name ? ' - ' + name : ''))}) /Author (MortgageUSA) /Creator (PitchPoint) >>`);
     let out = '%PDF-1.7\n%\xe2\xe3\xcf\xd3\n'; const offs = [];
     O.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
     const xref = out.length;
@@ -4090,12 +4167,16 @@ function readHomesPage(doc) {
     t.style.cssText = `position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483600;background:${bad ? '#b42318' : '#137a32'};color:#fff;border-radius:999px;padding:10px 18px;font:600 13.5px "Segoe UI",Arial,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25)`;
     t.textContent = msg; document.documentElement.appendChild(t); setTimeout(() => t.remove(), 6000);
   }
-  // The flow URL comes from the company's Edge policy (extension: every PC at once), or is pasted in the half-moon menu
-  const policyFlow = () => { try { return GM_getValue('vpPolicyFlowUrl', '') || ''; } catch (e) { return ''; } };
-  const flowUrl = () => { const u = policyFlow() || GM_getValue('vpFlowUrl', ''); return /^https:\/\/[^/]+\.(powerplatform\.com|logic\.azure\.com)(:\d+)?\//i.test(u) ? u : ''; };
-  // Send to Team Lead: with the Power Automate flow connected, the PDF + summary go straight to the team lead in Teams
-  // (filed in SharePoint). Without it (or if it fails): the PDF downloads and a Teams chat / Outlook email opens.
-  function sendLead(email, text, how) {
+  // Send to Team Lead goes through the company's Power Automate flow, signed in with the agent's own Microsoft
+  // account (Edge extension only). The flow only accepts mortgageusa.com sign-ins; Flow bot posts the sheet,
+  // so the message and PDF carry no agent name. Tampermonkey / not set up: PDF downloads + Teams/Outlook opens.
+  const MS = typeof VL_TEAMS !== 'undefined' ? VL_TEAMS : null;
+  const msState = { setup: false, user: '' };
+  const msRefresh = (cb) => { if (!MS) return cb && cb(); MS.status((r) => { if (r && !r.error) { msState.setup = !!r.setup; msState.user = r.user || ''; } cb && cb(); }); };
+  msRefresh();
+  const teamsReady = () => !!(MS && msState.setup);
+  const escH = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function sendLead(email, text, how, done) {
     const lead = TEAM_LEADS.find((t) => t[1].toLowerCase() === String(email).toLowerCase()) || ['', email];
     const borrower = (text.match(/Borrower: (.+)/) || [, 'Lead'])[1];
     const fileName = pdfFileName();
@@ -4105,16 +4186,16 @@ function readHomesPage(doc) {
       downloadPdf(pdf, fileName);
       sendVia(how || GM_getValue('vpTLvia', 'teams'), lead[1], text);
       if (why) toast(why + ' The PDF downloaded and ' + ((how || GM_getValue('vpTLvia', 'teams')) === 'outlook' ? 'an Outlook email' : 'a Teams chat') + ' opened instead.', true);
+      done && done(false);
     };
-    const url = flowUrl();
-    if (!url || how) return fallback('');
-    const agent = agentInfo().label;
-    const html = (text.split('\n').slice(1).join('\n') || 'Pitch sheet was empty').split('\n').map((l) => { const m = l.match(/^([^:]{1,30}):\s*(.*)$/); const e = (x) => String(x).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); return m ? `<b>${e(m[1])}:</b> ${e(m[2])}` : `<b>${e(l)}</b>`; }).join('<br>');
-    GM_xmlhttpRequest({
-      method: 'POST', url, timeout: 30000, headers: { 'Content-Type': 'application/json' },
-      data: JSON.stringify({ teamLead: lead[1], teamLeadName: lead[0], agent, borrower, fileName, summaryHtml: html, summaryText: text, pdf }),
-      onload: (r) => { if (r.status >= 200 && r.status < 300) toast('Pitch sheet sent to ' + (lead[0] || lead[1]) + ' in Teams ✓'); else fallback("Couldn't reach the Team Lead flow (" + r.status + ')'); },
-      onerror: () => fallback("Couldn't reach the Team Lead flow."), ontimeout: () => fallback('The Team Lead flow took too long.')
+    if (how || !teamsReady()) return fallback('');
+    const body = text.split('\n').slice(1).join('\n') || 'Pitch sheet was empty';
+    const html = body.split('\n').map((l) => { const m = l.match(/^([^:]{1,30}):\s*(.*)$/); return m ? `<b>${escH(m[1])}:</b> ${escH(m[2])}` : `<b>${escH(l)}</b>`; }).join('<br>');
+    MS.send({ teamLead: lead[1], teamLeadName: lead[0], borrower, fileName, summaryHtml: html, summaryText: body, pdf }, (r) => {
+      if (r && r.user) msState.user = r.user;
+      if (r && r.status >= 200 && r.status < 300) { toast('Pitch sheet sent to ' + (lead[0] || lead[1]) + ' in Teams ✓'); done && done(true); }
+      else if (r && /access_denied|cancel|did not approve|user_cancelled/i.test(r.error || '')) { toast('Microsoft sign-in was cancelled, so nothing was sent.', true); done && done(false); }
+      else fallback(r && r.status ? "Teams didn't take it (" + r.status + ')' : "Couldn't reach Teams" + (r && r.error ? ' (' + r.error + ')' : '') + '.');
     });
   }
   function sendVia(how, email, text) {
@@ -4131,7 +4212,7 @@ function readHomesPage(doc) {
   }
   function leadPicker() {   // the team-lead choice + Teams / Outlook, used by the pitch sheet and the disposition screen
     const last = GM_getValue('vpTL', ''), via = GM_getValue('vpTLvia', 'teams');
-    if (flowUrl()) return `<select class="tlsel">${TEAM_LEADS.map(([n, e]) => `<option value="${e}"${e === last ? ' selected' : ''}>${n}</option>`).join('')}</select><span class="tlvia" style="border:0;font-size:12px;opacity:.75;padding:0 4px">PDF · Teams</span>`;
+    if (teamsReady()) return `<select class="tlsel">${TEAM_LEADS.map(([n, e]) => `<option value="${e}"${e === last ? ' selected' : ''}>${n}</option>`).join('')}</select><span class="tlvia" style="border:0;font-size:12px;opacity:.75;padding:0 4px">PDF · Teams</span>`;
     return `<select class="tlsel">${TEAM_LEADS.map(([n, e]) => `<option value="${e}"${e === last ? ' selected' : ''}>${n}</option>`).join('')}</select>
       <span class="tlvia"><button type="button" data-via="teams" class="${via === 'teams' ? 'on' : ''}">Teams</button><button type="button" data-via="outlook" class="${via === 'outlook' ? 'on' : ''}">Outlook</button></span>`;
   }
@@ -4139,19 +4220,45 @@ function readHomesPage(doc) {
     let m = byId('vl-tlbox');
     if (m) { m.remove(); return; }
     m = document.createElement('div'); m.id = 'vl-tlbox';
-    m.innerHTML = flowUrl()
-      ? `<b>Send this pitch sheet to</b>${leadPicker()}<button type="button" class="go full" data-go="flow">Send PDF to team lead in Teams</button><button type="button" class="x" data-x="1">✕</button>
-         <div class="note">Goes straight to them in Teams with the PDF (saved in SharePoint). Or open it yourself: <a href="#" data-go="teams">Teams</a> · <a href="#" data-go="outlook">Outlook</a></div>`
-      : `<b>Send this pitch sheet to</b>${leadPicker()}<button type="button" class="go" data-go="teams">Send in Teams</button><button type="button" class="go2" data-go="outlook">Send in Outlook</button><button type="button" class="x" data-x="1">✕</button>
-         <div class="note">The PDF downloads and a Teams chat / Outlook email opens with the summary typed in: drag the PDF in and press send.</div>`;
     byId('vl-pitch').appendChild(m);
-    m.querySelector('.tlvia').remove();
+    let pick = GM_getValue('vpTL', '') || TEAM_LEADS[0][1];
+    const ini = (n) => n.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+    const draw = () => {
+      if (!teamsReady()) {   // Tampermonkey, or Teams sending not set up yet: PDF + Teams/Outlook link
+        m.innerHTML = `<b>Send this pitch sheet to</b>${leadPicker()}<button type="button" class="go" data-go="teams">Send in Teams</button><button type="button" class="go2" data-go="outlook">Send in Outlook</button><button type="button" class="x" data-x="1">✕</button>
+          <div class="note">The PDF downloads and a Teams chat / Outlook email opens with the summary typed in: drag the PDF in and press send.</div>`;
+        m.querySelector('.tlvia').remove(); m.className = ''; return;
+      }
+      m.className = 'ms';
+      if (!msState.user) {
+        m.innerHTML = `<button type="button" class="x" data-x="1">✕</button><div class="hd">Send to Team Lead</div>
+          <div class="sign"><p class="t">Connect your work account</p><p>Sign in once with your <b>@mortgageusa.com</b> Microsoft account to send pitch sheets to Teams.</p>
+          <button type="button" class="msbtn" data-go="signin"><span class="sq"><i style="background:#f25022"></i><i style="background:#7fba00"></i><i style="background:#00a4ef"></i><i style="background:#ffb900"></i></span>Sign in with Microsoft</button>
+          <p class="sm">Opens Microsoft's own sign-in window. Your password never goes through Vici.</p></div>`;
+        return;
+      }
+      const sum = pitchSummary().split('\n').slice(1).filter(Boolean);
+      m.innerHTML = `<button type="button" class="x" data-x="1">✕</button><div class="hd">Send to Team Lead</div>
+        <label>TEAM LEAD</label><div class="leads">${TEAM_LEADS.map(([n, e]) => `<button type="button" class="lead${e === pick ? ' on' : ''}" data-lead="${e}"><i>${ini(n)}</i>${n}</button>`).join('')}</div>
+        <label>MESSAGE</label><div class="msg"><b>New pitch sheet</b><br>${sum.length ? sum.slice(0, 5).map(escH).join('<br>') + (sum.length > 5 ? '<br>…' : '') : 'Pitch sheet is empty'}</div>
+        <div class="file"><span class="pdf">PDF</span><span><b>${escH(pdfFileName())}</b><br><small>Editable · saved privately in SharePoint for ${escH((TEAM_LEADS.find((t) => t[1] === pick) || [pick])[0])}</small></span></div>
+        <div class="ft"><span>Signed in as ${escH(msState.user)} · <a href="#" data-go="signout">sign out</a></span><button type="button" class="send" data-go="send">Send</button></div>`;
+    };
+    draw();
     m.addEventListener('click', (e) => {
       if (e.target.closest('[data-x]')) { m.remove(); return; }
+      const l = e.target.closest('[data-lead]'); if (l) { pick = l.dataset.lead; draw(); return; }
       const g = e.target.closest('[data-go]'); if (!g) return;
-      e.preventDefault(); sendLead(m.querySelector('.tlsel').value, pitchSummary(), g.dataset.go === 'flow' ? '' : g.dataset.go); m.remove();
+      e.preventDefault();
+      const go = g.dataset.go;
+      if (go === 'signin') { g.disabled = true; g.lastChild.textContent = 'Waiting for Microsoft…'; MS.signin((r) => { if (r && r.user) msState.user = r.user; else if (r && r.error && !/cancel|access_denied/i.test(r.error)) toast("Microsoft sign-in didn't work (" + r.error + ').', true); draw(); }); return; }
+      if (go === 'signout') { MS.signout(() => { msState.user = ''; draw(); }); return; }
+      if (go === 'send') { g.disabled = true; g.textContent = 'Sending…'; sendLead(pick, pitchSummary(), '', () => m.remove()); return; }
+      sendLead(m.querySelector('.tlsel').value, pitchSummary(), go); m.remove();
     });
+    msRefresh(() => { if (m.isConnected && !m.querySelector('.send[disabled],.msbtn[disabled]')) draw(); });
   }
+
 
 
 

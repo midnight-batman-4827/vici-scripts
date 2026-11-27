@@ -1,27 +1,33 @@
-# Mortgageusa Property Lookup – Privacy Policy
+# PitchPoint – Privacy Policy
 
-_Last updated: November 25, 2026_
+_Last updated: November 27, 2026_
 
-Mortgageusa Property Lookup is an internal tool for Mortgageusa employees. It runs only on Mortgageusa's VICIdial pages (`mtgusa.talkitpro.com`: the agent screen, the lead loader and the admin pages) and on `www.homes.com`.
+PitchPoint is an internal tool for MortgageUSA employees. It runs only on MortgageUSA's VICIdial pages (`mtgusa.talkitpro.com`) and, as an optional helper, on `www.homes.com`.
 
 ## What it reads
-- The lead that is open on the VICIdial agent screen: name, phone, property address and the loan fields.
-- What the loan officer types into the tool's pitch sheet and disposition screen.
-- The agent's own VICIdial user name and ID.
+- The lead open on the VICIdial agent screen: name, phone, property address and loan fields.
+- What the user types into PitchPoint's pitch sheet and disposition screen.
+- The user's VICIdial user name and ID (used only on screen).
 
 ## What it does with it
-- **Property lookups:** it looks up the lead's property address on Zillow (and uses Realtor.com's public address-suggestion service to match addresses), and shows the public property details on the agent's screen. Only the address is sent, and only to look up the property. Links let the agent open the property on Realtor.com, Homes.com or Trulia themselves.
-- **Send to Team Lead:** only when the loan officer clicks **Send to Team Lead**, the pitch sheet (as a PDF and a short summary) is sent to Mortgageusa's own Microsoft 365 workflow (Power Automate), which saves it in Mortgageusa's private SharePoint site and messages the chosen team lead in Microsoft Teams. The Social Security number is never included.
-- **Screen layout:** it rearranges and restyles the VICIdial screens on the agent's own computer.
+- **Property lookups:** the lead's property address is sent to Zillow (and Realtor.com's and Move's public address services) to look up and match public property details. Only the address is sent.
+- **Send to Team Lead:** only when the user clicks **Send**, the pitch sheet (a PDF and a short summary) is sent to MortgageUSA's own Microsoft 365 workflow (Power Automate), which saves it in MortgageUSA's private SharePoint site and messages the chosen team lead in Microsoft Teams. The SSN and the agent's name are never included. The workflow's run history records which company account sent each sheet.
+- **Fallback:** if Teams sending isn't available, the PDF downloads to the user's computer and a Teams chat or Outlook email opens for the user to send.
+- **Screen layout:** PitchPoint rearranges and restyles VICIdial screens on the user's own computer.
 
-## What it stores
-- In the browser's local extension storage on that computer only: the agent's display choices (theme, view, animation), the last team lead picked, that day's call counts, and the current property lookup. The pitch sheet clears on the next call and is not stored.
-- The address of Mortgageusa's Power Automate workflow, set by Mortgageusa's IT through Microsoft Edge policy.
+## Microsoft sign-in
+- The user signs in in Microsoft's own window; PitchPoint never sees or stores the password.
+- Microsoft issues a sign-in token (about an hour). It's kept only in the browser's memory, inside the extension, and is erased when the browser closes.
+- The user's work email is saved on that computer to pre-fill the next sign-in.
+
+## What it stores (on the user's computer only)
+- Display choices (theme, view, animation), the last team lead picked, the day's call counts, the current property lookup, and the user's acceptance of these terms.
+- The pitch sheet clears on the next call and is not stored.
 
 ## What it doesn't do
-- It does not send data to the developer or to anyone outside the property sites and Mortgageusa's own Microsoft 365 above.
-- It has no analytics, tracking or advertising, and it does not sell or share data.
-- It does not read any other website or any other part of the browser.
+- No analytics, tracking or advertising. No selling or sharing of data.
+- Nothing is sent to the developer or to anyone other than the property sites above and MortgageUSA's own Microsoft 365.
+- It doesn't read any other website or any other part of the browser.
 
-## Contact
-Questions: contact Mortgageusa's IT or management team.
+## Questions
+Contact MortgageUSA management.

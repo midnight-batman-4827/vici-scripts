@@ -1,8 +1,8 @@
-# Mortgageusa Property Lookup – Edge extension
+# PitchPoint – Edge extension
 
 The same tool as the Tampermonkey script, packaged as a Microsoft Edge extension, so it can be installed on every agent's PC with no Tampermonkey and no clicks.
 
-- **Upload file:** `dist/mortgageusa-property-lookup-<version>.zip`
+- **Upload file:** `dist/pitchpoint-<version>.zip`
 - **Store images:** `extension/store/` (logo and screenshots, sample data only)
 - **Privacy policy URL:** https://github.com/midnight-batman-4827/vici-scripts/blob/main/PRIVACY.md
 
@@ -11,7 +11,7 @@ The same tool as the Tampermonkey script, packaged as a Microsoft Edge extension
 ## Step 1 – Submit it in Partner Center (one time)
 
 1. Go to https://partner.microsoft.com/dashboard/microsoftedge/overview and click **Create new extension**.
-2. **Packages:** upload `mortgageusa-property-lookup-<version>.zip`.
+2. **Packages:** upload `pitchpoint-<version>.zip`.
 3. **Availability:**
    - **Visibility: Hidden.** Only people with the direct link (or IT policy) can install it. It won't show up in searches.
    - **Markets:** United States.
@@ -26,7 +26,7 @@ The same tool as the Tampermonkey script, packaged as a Microsoft Edge extension
 ### Store listing text
 
 **Description**
-> Internal tool for Mortgageusa employees, for Mortgageusa's VICIdial system only. It gives the VICIdial agent screen a modern layout with themes, a pitch sheet, an improved disposition screen and an opening animation, and adds a "Property at a glance" card and a Property tab with the lead's home value, sale and tax history and loan-to-value, looked up on Zillow. Loan officers can send a finished pitch sheet as a PDF to their team lead in Microsoft Teams through the company's own Microsoft 365. It also restyles Mortgageusa's VICIdial admin pages. It does nothing on other sites.
+> PitchPoint is an internal tool for Mortgageusa employees, for Mortgageusa's VICIdial system only. It gives the VICIdial agent screen a modern layout with themes, a pitch sheet, an improved disposition screen and an opening animation, and adds a "Property at a glance" card and a Property tab with the lead's home value, sale and tax history and loan-to-value, looked up on Zillow. Loan officers can send a finished pitch sheet as a PDF to their team lead in Microsoft Teams through the company's own Microsoft 365. It also restyles Mortgageusa's VICIdial admin pages. It does nothing on other sites.
 
 **Short description**
 > Modern agent screen, pitch sheet and property facts for Mortgageusa's VICIdial system.

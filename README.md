@@ -1,4 +1,6 @@
-# Vici Property Lookup – install guide
+# PitchPoint – Tampermonkey test install
+
+PitchPoint is MortgageUSA's Edge extension for the Vici agent screen. This Tampermonkey copy is the test channel: new features land here first.
 
 Adds **ZILLOW · REALTOR · HOMES.COM · TRULIA** tabs next to SCRIPT 2 on the Vici agent screen.
 When a call comes in, each tab shows that home's photos, value, sale, tax, mortgage and ownership history, and home details.
@@ -58,3 +60,7 @@ If a site can't find the lead's exact address, the tab lists close matches in th
 
 ### Updates
 Nothing to do. Tampermonkey installs new versions on its own (about once a day), and they show up the next time Vici loads. Agents never need to open Tampermonkey.
+
+## Disclaimer
+
+Provided **as is**, without warranty of any kind. The author(s) are not liable for any damages, data loss or misuse arising from this software, extension or code. See [DISCLAIMER.md](DISCLAIMER.md), [Terms of Use](TERMS.md) and [Privacy Policy](PRIVACY.md).
